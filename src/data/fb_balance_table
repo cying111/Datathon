@@ -1,0 +1,122 @@
+library(data.table)
+setwd("/Volumes/MY\ PASSPORT/Sepsis project")
+files <- dir('data_mimic', recursive = TRUE, full.names = TRUE)
+
+input_cv <- fread(files[15])
+input_mv <- fread(files[16])
+d_items <- fread(files[12])
+output_both <- fread(files[20])
+admit <- fread(files[1])
+icustays <- fread(files[14])
+
+##icu admission table
+icustays[, intime:=as.POSIXct(strptime(INTIME, "%Y-%m-%d %H:%M:%S"))]
+icustays[, outtime:=as.POSIXct(strptime(OUTTIME, "%Y-%m-%d %H:%M:%S"))]
+
+
+##CV table
+join_tables_cv <- unique(merge(d_items[,c('ITEMID','LABEL'), with = FALSE], input_cv, by = c('ITEMID')), by = NULL)
+
+## format time
+join_tables_cv[, charttime:=as.POSIXct(strptime(CHARTTIME, "%Y-%m-%d %H:%M:%S"))]
+
+
+
+join_tables_mv <- unique(merge(d_items[,c('ITEMID','LABEL'), with = FALSE], input_mv, by = c('ITEMID')), by = NULL)
+join_tables_mv[, starttime:=as.POSIXct(strptime(STARTTIME, "%Y-%m-%d %H:%M:%S"))]
+join_tables_mv[, endtime:=as.POSIXct(strptime(ENDTIME, "%Y-%m-%d %H:%M:%S"))]
+
+## output
+join_tables_op <- unique(merge(d_items[,c('ITEMID','LABEL'), with = FALSE], output_both, by = c('ITEMID')), by = NULL)
+join_tables_op[, charttime:=as.POSIXct(strptime(CHARTTIME, "%Y-%m-%d %H:%M:%S"))]
+
+
+## To extract labels with units
+tmp <- unique(join_tables_cv[, c('LABEL', 'AMOUNTUOM')],by = NULL)
+tmp <- tmp[AMOUNTUOM != '']
+tmp$LABEL <- tolower(tmp$LABEL)
+tmp2 <- unique(join_tables_mv[, c('LABEL', 'AMOUNTUOM')],by = NULL)
+tmp2 <- tmp2[AMOUNTUOM != '']
+tmp2$LABEL <- tolower(tmp2$LABEL)
+
+tmp <- unique(join_tables_op[, c('LABEL', 'VALUEUOM')],by = NULL)
+tmp <- tmp[VALUEUOM != '']
+tmp$LABEL <- tolower(tmp$LABEL)
+
+write.table(tmp, '/Users/llc/Documents/any4.csv', sep = ',', row.names = FALSE, col.names = TRUE)
+
+## Step 1: For both input and output, adjust timing with respect to admit time
+icuids <- icustays$ICUSTAY_ID
+tmp_cv <- merge(icustays[,c('ICUSTAY_ID','intime'), with = FALSE],join_tables_cv,by = c('ICUSTAY_ID'), all.x = FALSE, all.y = FALSE)
+tmp_cv[, timetoadmit := as.numeric(difftime(charttime,intime,units = 'hours'))]
+
+tmp_mv <- merge(icustays[,c('ICUSTAY_ID','intime'), with = FALSE],join_tables_mv,by = c('ICUSTAY_ID'), all.x = FALSE, all.y = FALSE)
+tmp_mv[, timetoadmit := as.numeric(difftime(charttime,intime,units = 'hours'))]
+
+
+join_tables_mv[, timetoadmitSt := as.numeric(difftime(starttime,intime],units = 'hours'))]
+join_tables_mv[, timetoadmitEnd := as.numeric(difftime(endtime,intime],units = 'hours'))]
+join_tables_op[, timetoadmit := as.numeric(difftime(charttime,unlist(icustays$intime)[match(.SD$ICUSTAY_ID, icuids)],units = 'hours'))]
+
+
+
+
+## Step 2: To calculate input and output for 3 hrs, 8hrs, 24hrs, 48hrs, 72hrs
+## exclude those with other units than 'ml'
+#' @description This function generates cumulative input for specific time points
+#' @param DT Input data.table
+#' @param t Specific time points
+#' @param volname Column name of volume
+#' @param tname Column name of timing
+#' @param st  The starttime of a specific order, identified by linkorderid.
+#' @return A value.
+algo_func_cv <- function(DT, t, volname, tname, stname){
+  vol <- unlist(DT[,c('volname'), with = FALSE])
+  ts <- unlist(DT[,c('tname'), with = FALSE])
+  st <- unique(DT[,c('stname'), with = FALSE])
+  
+  ## case 1: specific time points is prior to order start time
+  if(st>=t){
+    return(NA)
+  }
+  
+  ## case 2: specific time points after all order end times
+  if(last(ts)<=t){
+    return(sum(vol))
+  }
+  
+  ## case 3: specific time points is before first record but after order start time
+  if(t>st&(t <= ts[1])){
+    return(vol[1]/(ts[1]-st)*(t-st))
+  }
+  
+  ## case 4: specific time points is in between records
+  if(t > range(ts)[1] &(t < range(ts)[2])){
+    befs <- which(t>ts)
+    aft <- which(t<ts)[1]
+    return(sum(vol[befs])+vol[aft]/(ts[aft]-ts[last(befs)])*(t-ts[last(befs)]))
+  }
+  
+}
+
+join_tables_cv[,sttime := min(timetoadmit),by = list(SUBJECT_ID, HADM_ID,
+                                   ICUSTAY_ID,LINKORDERID)],by = NULL)
+
+tmp <- join_tables_cv[tolower(AMOUNTUOM)=='ml'&(STOPPED != 'Stopped')&(STOPPED != 'D')]
+
+
+
+tmp[, list(vol3hr = algo_func(.SD,3,'AMOUNT','charttime','sttime'),
+                      ),
+    by = list(SUBJECT_ID, HADM_ID,
+              ICUSTAY_ID,LINKORDERID)]
+
+inputTmpCV <- unique(join_tables_cv[tolower(AMOUNTUOM)=='ml'&(STOPPED != 'Stopped')&(STOPPED != 'Restart'), 
+                               list(timetoadmit = timetoadmit,
+                                 volume=sum(AMOUNT)),
+                                  
+                               by = list(SUBJECT_ID, HADM_ID,
+                                         ICUSTAY_ID,charttime)],by = NULL)
+setkey(inputTmpCV, SUBJECT_ID, HADM_ID,
+       ICUSTAY_ID,timetoadmit)
+
