@@ -32,18 +32,18 @@ join_tables_op[, charttime:=as.POSIXct(strptime(CHARTTIME, "%Y-%m-%d %H:%M:%S"))
 
 
 ## To extract labels with units
-tmp <- unique(join_tables_cv[, c('LABEL', 'AMOUNTUOM')],by = NULL)
-tmp <- tmp[AMOUNTUOM != '']
-tmp$LABEL <- tolower(tmp$LABEL)
-tmp2 <- unique(join_tables_mv[, c('LABEL', 'AMOUNTUOM')],by = NULL)
-tmp2 <- tmp2[AMOUNTUOM != '']
-tmp2$LABEL <- tolower(tmp2$LABEL)
+#tmp <- unique(join_tables_cv[, c('LABEL', 'AMOUNTUOM')],by = NULL)
+#tmp <- tmp[AMOUNTUOM != '']
+#tmp$LABEL <- tolower(tmp$LABEL)
+#tmp2 <- unique(join_tables_mv[, c('LABEL', 'AMOUNTUOM')],by = NULL)
+#tmp2 <- tmp2[AMOUNTUOM != '']
+#tmp2$LABEL <- tolower(tmp2$LABEL)
 
-tmp <- unique(join_tables_op[, c('LABEL', 'VALUEUOM')],by = NULL)
-tmp <- tmp[VALUEUOM != '']
-tmp$LABEL <- tolower(tmp$LABEL)
+#tmp <- unique(join_tables_op[, c('LABEL', 'VALUEUOM')],by = NULL)
+#tmp <- tmp[VALUEUOM != '']
+#tmp$LABEL <- tolower(tmp$LABEL)
 
-write.table(tmp, '/Users/llc/Documents/any4.csv', sep = ',', row.names = FALSE, col.names = TRUE)
+#write.table(tmp, '/Users/llc/Documents/any4.csv', sep = ',', row.names = FALSE, col.names = TRUE)
 
 ## Step 1: For both input and output, adjust timing with respect to admit time
 icuids <- icustays$ICUSTAY_ID
@@ -61,62 +61,71 @@ join_tables_op[, timetoadmit := as.numeric(difftime(charttime,unlist(icustays$in
 
 
 
-## Step 2: To calculate input and output for 3 hrs, 8hrs, 24hrs, 48hrs, 72hrs
-## exclude those with other units than 'ml'
-#' @description This function generates cumulative input for specific time points
-#' @param DT Input data.table
-#' @param t Specific time points
-#' @param volname Column name of volume
-#' @param tname Column name of timing
-#' @param st  The starttime of a specific order, identified by linkorderid.
-#' @return A value.
-algo_func_cv <- function(DT, t, volname, tname, stname){
-  vol <- unlist(DT[,c('volname'), with = FALSE])
-  ts <- unlist(DT[,c('tname'), with = FALSE])
-  st <- unique(DT[,c('stname'), with = FALSE])
-  
-  ## case 1: specific time points is prior to order start time
-  if(st>=t){
-    return(NA)
-  }
-  
-  ## case 2: specific time points after all order end times
-  if(last(ts)<=t){
-    return(sum(vol))
-  }
-  
-  ## case 3: specific time points is before first record but after order start time
-  if(t>st&(t <= ts[1])){
-    return(vol[1]/(ts[1]-st)*(t-st))
-  }
-  
-  ## case 4: specific time points is in between records
-  if(t > range(ts)[1] &(t < range(ts)[2])){
-    befs <- which(t>ts)
-    aft <- which(t<ts)[1]
-    return(sum(vol[befs])+vol[aft]/(ts[aft]-ts[last(befs)])*(t-ts[last(befs)]))
-  }
-  
+## Step 2: To calculate hourly input and output
+## Idea is such that for each recorded volume, find the starting time and ending time. 
+## For example, drug A has a sequence of recording at different timings,
+## for the first record, the starting time will be one hour ago.
+## for other records, the starting time will be the previous timing.
+## Then calculate the volume of this drug A at hours that before and after the recording timings
+findsid <- function(DT){
+newbottle <- DT$NEWBOTTLE
+newbottle[which(is.na(newbottle))] <- 0
+newbottle[DT$STOPPED=='Restart'] <- 1
+sid <- cumsum(newbottle)
+return(sid)
+}
+findsttime <- function(DT){
+timings <- DT$timetoadmit
+output <- c(timings[1]-1, timings[-length(timings)])
+return(output)
 }
 
-join_tables_cv[,sttime := min(timetoadmit),by = list(SUBJECT_ID, HADM_ID,
-                                   ICUSTAY_ID,LINKORDERID)],by = NULL)
 
-tmp <- join_tables_cv[tolower(AMOUNTUOM)=='ml'&(STOPPED != 'Stopped')&(STOPPED != 'D')]
+tmp <- tmp_cv[tolower(AMOUNTUOM)=='ml']
+setkey(tmp,SUBJECT_ID,HADM_ID,ICUSTAY_ID,ITEMID,LINKORDERID,timetoadmit)
+tmp[, sid := findsid(.SD),by = list(SUBJECT_ID, HADM_ID,
+                                   ICUSTAY_ID,ITEMID,LINKORDERID)]
+
+tmp[,sttime := findsttime(.SD),by = list(SUBJECT_ID, HADM_ID,
+                                   ICUSTAY_ID,ITEMID,LINKORDERID,sid)]
+
+## With both starting time and ending time, hourly input can be calculated
+cal_hourly_input <-function(DT){
+## General formula:
+##  st for starting time
+##  et for ending time
+## then this input contributes to both ceiling(st) and ceiling(et) 
+r_vol <- DT$AMOUNT
+st <- DT$sttime
+et <- DT$timetoadmit
+c_vol <- c(r_vol/(et-st)*(ceiling(st)-st),
+           r_vol/(et-st)*(ceiling(et)-et))
+c_time <- c(ceiling(st), ceiling(et))
+return(list(c_vol, c_time))
+}
+
+hourly_input_cv <- tmp[, list(c_time = cal_hourly_input(.SD)[[2]],
+                              c_vol = cal_hourly_input(.SD)[[1]]),
+                              by = list(SUBJECT_ID, HADM_ID,
+                                   ICUSTAY_ID,ITEMID,ROW_ID)]
+
+tmp2 <- hourly_input_cv
+
+hourly_input_cv <- unique(tmp2[,list(tot_vol = sum(c_vol,na.rm=TRUE)), by = list(SUBJECT_ID, HADM_ID,
+                                   ICUSTAY_ID,c_time)],by=NULL)
+
+tmp3 <- hourly_input_cv[,3:5,with=FALSE]
+all_times <- seq(0, max(tmp3$c_time), by =1)  
+ids <- unique(tmp3$ICUSTAY_ID)
+setkey(tmp3,ICUSTAY_ID,c_time)
+tmp4 <- tmp3[CJ(ids,all_times), roll = TRUE]
+hourly_input_cv <- merge(tmp4[c_time<=72], unique(tmp2[,c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'), with = FALSE],by=NULL), by = c('ICUSTAY_ID'), 
+                    all.x=TRUE,all.y=FALSE,allow.cartesian = FALSE)
+savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
+write.table(hourly_input_cv, paste0(savedir,'hourly_input_cv.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+## For mv input, some modifications need to be changed before calculation
+ 
 
 
 
-tmp[, list(vol3hr = algo_func(.SD,3,'AMOUNT','charttime','sttime'),
-                      ),
-    by = list(SUBJECT_ID, HADM_ID,
-              ICUSTAY_ID,LINKORDERID)]
-
-inputTmpCV <- unique(join_tables_cv[tolower(AMOUNTUOM)=='ml'&(STOPPED != 'Stopped')&(STOPPED != 'Restart'), 
-                               list(timetoadmit = timetoadmit,
-                                 volume=sum(AMOUNT)),
-                                  
-                               by = list(SUBJECT_ID, HADM_ID,
-                                         ICUSTAY_ID,charttime)],by = NULL)
-setkey(inputTmpCV, SUBJECT_ID, HADM_ID,
-       ICUSTAY_ID,timetoadmit)
 
