@@ -51,15 +51,21 @@ tmp_cv <- merge(icustays[,c('ICUSTAY_ID','intime'), with = FALSE],join_tables_cv
 tmp_cv[, timetoadmit := as.numeric(difftime(charttime,intime,units = 'hours'))]
 
 tmp_mv <- merge(icustays[,c('ICUSTAY_ID','intime'), with = FALSE],join_tables_mv,by = c('ICUSTAY_ID'), all.x = FALSE, all.y = FALSE)
-tmp_mv[, timetoadmit := as.numeric(difftime(charttime,intime,units = 'hours'))]
+tmp_mv[, timetoadmitSt := as.numeric(difftime(starttime,intime,units = 'hours'))]
+tmp_mv[, timetoadmitEnd := as.numeric(difftime(endtime,intime,units = 'hours'))]
 
+tmp_op <- merge(icustays[,c('ICUSTAY_ID','intime'), with = FALSE],join_tables_op,by = c('ICUSTAY_ID'), all.x = FALSE, all.y = FALSE)
+tmp_op[, timetoadmit := as.numeric(difftime(charttime,intime,units = 'hours'))]
 
-join_tables_mv[, timetoadmitSt := as.numeric(difftime(starttime,intime],units = 'hours'))]
-join_tables_mv[, timetoadmitEnd := as.numeric(difftime(endtime,intime],units = 'hours'))]
-join_tables_op[, timetoadmit := as.numeric(difftime(charttime,unlist(icustays$intime)[match(.SD$ICUSTAY_ID, icuids)],units = 'hours'))]
-
-
-
+## Check data
+summary(tmp_cv)
+## Exists records where charttime is before admission time
+summary(tmp_mv)
+## Exists records where charttime is before admission time
+## Exists records where fluid amount being negative
+summary(tmp_op)
+## Exists records where charttime is before admission time
+## Exists records where fluid amount being negative
 
 ## Step 2: To calculate hourly input and output
 ## Idea is such that for each recorded volume, find the starting time and ending time. 
@@ -67,6 +73,8 @@ join_tables_op[, timetoadmit := as.numeric(difftime(charttime,unlist(icustays$in
 ## for the first record, the starting time will be one hour ago.
 ## for other records, the starting time will be the previous timing.
 ## Then calculate the volume of this drug A at hours that before and after the recording timings
+
+## Define serial id for bottles
 findsid <- function(DT){
 newbottle <- DT$NEWBOTTLE
 newbottle[which(is.na(newbottle))] <- 0
@@ -76,38 +84,70 @@ return(sid)
 }
 findsttime <- function(DT){
 timings <- DT$timetoadmit
-output <- c(timings[1]-1, timings[-length(timings)])
+output <- c(ifelse(timings[1]-1<0,0,timings[1]-1), timings[-length(timings)])
 return(output)
 }
 
 
 tmp <- tmp_cv[tolower(AMOUNTUOM)=='ml']
+## Remove entries for NA amount
+tmp <- tmp[which(!is.na(AMOUNT))]
+## Check if there is duplicated records at the same timing for the same item, same linkorderid but different orders
+check_duplicates <- unique(tmp[,list(count=.N), by = list(SUBJECT_ID,HADM_ID,ICUSTAY_ID,ITEMID,LINKORDERID,timetoadmit)],by=NULL)
+
+## If yes, sum records at the same timing 
+tmp2 <- unique(tmp[, list(amount=sum(AMOUNT),
+                          NEWBOTTLE = unique(NEWBOTTLE)), by = list(SUBJECT_ID,HADM_ID,ICUSTAY_ID,ITEMID,LINKORDERID,timetoadmit)],by=NULL)
+
+tmp <- tmp2
 setkey(tmp,SUBJECT_ID,HADM_ID,ICUSTAY_ID,ITEMID,LINKORDERID,timetoadmit)
 tmp[, sid := findsid(.SD),by = list(SUBJECT_ID, HADM_ID,
                                    ICUSTAY_ID,ITEMID,LINKORDERID)]
+
 
 tmp[,sttime := findsttime(.SD),by = list(SUBJECT_ID, HADM_ID,
                                    ICUSTAY_ID,ITEMID,LINKORDERID,sid)]
 
 ## With both starting time and ending time, hourly input can be calculated
-cal_hourly_input <-function(DT){
+cal_hourly_input <-function(DT,volVarName, stVarName, etVarName){
 ## General formula:
 ##  st for starting time
 ##  et for ending time
 ## then this input contributes to both ceiling(st) and ceiling(et) 
-r_vol <- DT$AMOUNT
-st <- DT$sttime
-et <- DT$timetoadmit
-c_vol <- c(r_vol/(et-st)*(ceiling(st)-st),
-           r_vol/(et-st)*(ceiling(et)-et))
-c_time <- c(ceiling(st), ceiling(et))
-return(list(c_vol, c_time))
+r_vol <- unlist(DT[,volVarName, with = FALSE])
+#r_vol <- DT$amount
+st <- unlist(DT[,stVarName, with = FALSE])
+#st <- DT$sttime
+et <- unlist(DT[,etVarName, with = FALSE])
+#et <- DT$timetoadmit
+
+## Find the list of hours that can be calculated from this record
+t_seq <- seq(ceiling(st),ceiling(et),by=1)
+
+if(ceiling(st)==st & (st < ceiling(et))){ # if st is already integer hour & st < ceiling(et)
+t_seq <- seq(ceiling(st)+1,ceiling(et),by=1)
 }
 
-hourly_input_cv <- tmp[, list(c_time = cal_hourly_input(.SD)[[2]],
-                              c_vol = cal_hourly_input(.SD)[[1]]),
-                              by = list(SUBJECT_ID, HADM_ID,
-                                   ICUSTAY_ID,ITEMID,ROW_ID)]
+if(ceiling(st)==ceiling(et)){ # case 2: if st and et are within the same hour
+t_seq <- ceiling(st)
+}
+n <- length(t_seq)
+## Find the corresponding contributing interval for the hours
+if(n>1){
+t_int_start <- c(st, t_seq[-n]) ## This is only valid when there are at least two hours can be calculated from this record
+t_int_end <- c(t_seq[-n],et)
+}else{
+t_int_start <- st
+t_int_end <- et
+}
+c_vol <- r_vol/(et-st)*(t_int_end - t_int_start)
+c_time <- t_seq
+return(list(c_vol, c_time))
+}
+rids <- 1:nrow(tmp)
+tmp$rid <- rids
+hourly_input_cv <- tmp[timetoadmit>0, list(c_time = cal_hourly_input(.SD)[[2]],
+                              c_vol = cal_hourly_input(.SD)[[1]]), by=rid]
 
 tmp2 <- hourly_input_cv
 
@@ -123,9 +163,41 @@ hourly_input_cv <- merge(tmp4[c_time<=72], unique(tmp2[,c('SUBJECT_ID','HADM_ID'
                     all.x=TRUE,all.y=FALSE,allow.cartesian = FALSE)
 savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
 write.table(hourly_input_cv, paste0(savedir,'hourly_input_cv.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+
+
+
 ## For mv input, some modifications need to be changed before calculation
- 
+## Need to change L to ml
+Lid <- which(tolower(tmp_mv$AMOUNTUOM)=='l') 
+tmp_mv[Lid, AMOUNT:=AMOUNT*1000]
+tmp_mv[Lid, AMOUNTUOM:='ml']
+
+## Need to check the records with negative values
+table(tmp_mv[AMOUNT<0]$AMOUNTUOM)
+
+tmp <- tmp_mv[tolower(AMOUNTUOM)=='ml']
+## Remove entries for NA amount
+tmp <- tmp[which(!is.na(AMOUNT))]
+
+hourly_input_mv <- tmp[timetoadmitSt>0, list(c_time = cal_hourly_input(.SD,'AMOUNT','timetoadmitSt','timetoadmitEnd')[[2]],
+                              c_vol = cal_hourly_input(.SD,'AMOUNT','timetoadmitSt','timetoadmitEnd')[[1]]), by=ROW_ID]
+tmp2 <- hourly_input_mv
+
+hourly_input_mv <- unique(tmp2[,list(tot_vol = sum(c_vol,na.rm=TRUE)), by = list(SUBJECT_ID, HADM_ID,
+                                   ICUSTAY_ID,c_time)],by=NULL)
+
+tmp3 <- hourly_input_mv[,3:5,with=FALSE]
+all_times <- seq(0, max(tmp3$c_time), by =1)  
+ids <- unique(tmp3$ICUSTAY_ID)
+setkey(tmp3,ICUSTAY_ID,c_time)
+tmp4 <- tmp3[CJ(ids,all_times), roll = TRUE]
+hourly_input_mv <- merge(tmp4[c_time<=72], unique(tmp2[,c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'), with = FALSE],by=NULL), by = c('ICUSTAY_ID'), 
+                    all.x=TRUE,all.y=FALSE,allow.cartesian = FALSE)
+savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
+write.table(hourly_input_cv, paste0(savedir,'hourly_input_mv.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
 
-
+## For output
+tmp <- tmp_op[, list(c_time=ceiling(timetoadmit),
+                     c_vol = VALUE)), by = list()]
 
