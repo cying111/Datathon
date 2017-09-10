@@ -147,7 +147,8 @@ return(list(c_vol, c_time))
 rids <- 1:nrow(tmp)
 tmp$rid <- rids
 hourly_input_cv <- tmp[timetoadmit>0, list(c_time = cal_hourly_input(.SD)[[2]],
-                              c_vol = cal_hourly_input(.SD)[[1]]), by=rid]
+                              c_vol = cal_hourly_input(.SD)[[1]]), by=list(SUBJECT_ID, HADM_ID,
+                                   ICUSTAY_ID,rid)]
 
 tmp2 <- hourly_input_cv
 
