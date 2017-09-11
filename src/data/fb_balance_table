@@ -1,13 +1,15 @@
+rm(list=ls())
 library(data.table)
-setwd("/Volumes/MY\ PASSPORT/Sepsis project")
+#setwd("/Volumes/MY\ PASSPORT/Sepsis project")
+setwd("D:/Sepsis project")
 files <- dir('data_mimic', recursive = TRUE, full.names = TRUE)
 
-input_cv <- fread(files[15])
-input_mv <- fread(files[16])
-d_items <- fread(files[12])
-output_both <- fread(files[20])
-admit <- fread(files[1])
-icustays <- fread(files[14])
+input_cv <- fread(files[grep('INPUTEVENTS_CV.csv',files)])
+input_mv <- fread(files[grep('INPUTEVENTS_MV.csv',files)])
+d_items <- fread(files[grep('D_ITEMS.csv',files)])#12
+output_both <- fread(files[grep('OUTPUTEVENTS.csv',files)])
+admit <- fread(files[grep('ADMISSIONS.csv',files)])
+icustays <- fread(files[grep('ICUSTAYS.csv',files)])
 
 ##icu admission table
 icustays[, intime:=as.POSIXct(strptime(INTIME, "%Y-%m-%d %H:%M:%S"))]
