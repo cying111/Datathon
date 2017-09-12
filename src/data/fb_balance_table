@@ -178,12 +178,66 @@ tmp_mv[Lid, AMOUNTUOM:='ml']
 ## Need to check the records with negative values
 table(tmp_mv[AMOUNT<0]$AMOUNTUOM)
 
+## For those with St >= End
+## change timings and amount sign
+Wrong_direction_ids <- which(tmp_mv$timetoadmitSt>tmp_mv$timetoadmitEnd) 
+tmp_mv[Wrong_direction_ids, stime:=timetoadmitEnd]
+tmp_mv[Wrong_direction_ids, etime:=timetoadmitSt]
+tmp_mv[Wrong_direction_ids, timetoadmitSt:=stime]
+tmp_mv[Wrong_direction_ids, timetoadmitEnd:=etime]
+tmp_mv[Wrong_direction_ids, AMOUNT:=(-1)*AMOUNT]
+tmp_mv[,stime:=NULL]
+tmp_mv[,etime:=NULL]
+
+
 tmp <- tmp_mv[tolower(AMOUNTUOM)=='ml']
 ## Remove entries for NA amount
 tmp <- tmp[which(!is.na(AMOUNT))]
+## Remove entries where start time equal to end time: 483 entries, all with amount being 0
+tmp <- tmp[timetoadmitSt!=timetoadmitEnd]
 
-hourly_input_mv <- tmp[timetoadmitSt>0, list(c_time = cal_hourly_input(.SD,'AMOUNT','timetoadmitSt','timetoadmitEnd')[[2]],
-                              c_vol = cal_hourly_input(.SD,'AMOUNT','timetoadmitSt','timetoadmitEnd')[[1]]), by=ROW_ID]
+cal_hourly_input <-function(DT){
+## General formula:
+##  st for starting time
+##  et for ending time
+## then this input contributes to both ceiling(st) and ceiling(et) 
+#r_vol <- unlist(DT[,volVarName, with = FALSE])
+r_vol <- DT$AMOUNT
+#st <- unlist(DT[,stVarName, with = FALSE])
+st <- DT$timetoadmitSt
+#et <- unlist(DT[,etVarName, with = FALSE])
+et <- DT$timetoadmitEnd
+
+## Find the list of hours that can be calculated from this record
+t_seq <- seq(ceiling(st),ceiling(et),by=1)
+
+if(ceiling(st)==st & (st < ceiling(et))){ # if st is already integer hour & st < ceiling(et)
+t_seq <- seq(ceiling(st)+1,ceiling(et),by=1)
+}
+
+if(ceiling(st)==ceiling(et)){ # case 2: if st and et are within the same hour
+t_seq <- ceiling(st)
+}
+n <- length(t_seq)
+## Find the corresponding contributing interval for the hours
+if(n>1){
+t_int_start <- c(st, t_seq[-n]) ## This is only valid when there are at least two hours can be calculated from this record
+t_int_end <- c(t_seq[-n],et)
+}else{
+t_int_start <- st
+t_int_end <- et
+}
+c_vol <- r_vol/(et-st)*(t_int_end - t_int_start)
+c_time <- t_seq
+return(list(c_vol, c_time))
+}
+
+
+
+
+hourly_input_mv <- tmp[timetoadmitEnd>=0, list(c_time = cal_hourly_input(.SD)[[2]],
+                              c_vol = cal_hourly_input(.SD)[[1]]), by=list(SUBJECT_ID, HADM_ID,
+                                   ICUSTAY_ID,ROW_ID)]
 tmp2 <- hourly_input_mv
 
 hourly_input_mv <- unique(tmp2[,list(tot_vol = sum(c_vol,na.rm=TRUE)), by = list(SUBJECT_ID, HADM_ID,
@@ -197,10 +251,50 @@ tmp4 <- tmp3[CJ(ids,all_times), roll = TRUE]
 hourly_input_mv <- merge(tmp4[c_time<=72], unique(tmp2[,c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'), with = FALSE],by=NULL), by = c('ICUSTAY_ID'), 
                     all.x=TRUE,all.y=FALSE,allow.cartesian = FALSE)
 savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
-write.table(hourly_input_cv, paste0(savedir,'hourly_input_mv.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+write.table(hourly_input_mv, paste0(savedir,'hourly_input_mv.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
 
 ## For output
-tmp <- tmp_op[, list(c_time=ceiling(timetoadmit),
-                     c_vol = VALUE)), by = list()]
+tmp <- tmp_op[tolower(VALUEUOM)=='ml']
+## 36417 entries with VALUEUOM being empty space have VALUE = 0
 
+
+## Remove entries for NA amount: 88282 entries
+tmp <- tmp[which(!is.na(VALUE))]
+tmp2 <- tmp[timetoadmit>=0, list(c_time=ceiling(timetoadmit),
+                     c_vol = VALUE), by = list(SUBJECT_ID, HADM_ID,
+                                   ICUSTAY_ID,ROW_ID)]
+                                   
+hourly_output <- unique(tmp2[,list(tot_vol = sum(c_vol,na.rm=TRUE)), by = list(SUBJECT_ID, HADM_ID,
+                                   ICUSTAY_ID,c_time)],by=NULL)
+
+tmp3 <- hourly_output[,3:5,with=FALSE]
+all_times <- seq(0, max(tmp3$c_time), by =1)  
+ids <- unique(tmp3$ICUSTAY_ID)
+setkey(tmp3,ICUSTAY_ID,c_time)
+tmp4 <- tmp3[CJ(ids,all_times), roll = TRUE]
+hourly_output <- merge(tmp4[c_time<=72], unique(tmp2[,c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'), with = FALSE],by=NULL), by = c('ICUSTAY_ID'), 
+                    all.x=TRUE,all.y=FALSE,allow.cartesian = FALSE)
+savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
+write.table(hourly_output, paste0(savedir,'hourly_output.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+
+
+## 
+files <- dir('/Users/llc/Documents/Sepsis working folder/data/', full.names =TRUE)
+files <- files[grep('hourly',files)]
+data <- lapply(files,function(file){
+data <- fread(file)
+data
+})
+input <- do.call('rbind',data[1:2]) # 56956
+setnames(input,'tot_vol','input_vol')
+output <- data[[3]] # 54752
+setnames(output,'tot_vol','output_vol')
+length(intersect(unique(input$ICUSTAY_ID),unique(output$ICUSTAY_ID))) 
+# 54582 ICUSTAYs have both input and output recorded
+all_merged <- merge(input, output, by = c('SUBJECT_ID', 'HADM_ID',
+                                   'ICUSTAY_ID','c_time'), all = FALSE)
+## set NA values to 0
+iNA <- which(is.na(all_merged$input_vol)
+oNA <- which(is.na(all_merged$output_vol)
+all_merged[, input_vol:=0]
