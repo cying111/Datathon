@@ -1,7 +1,7 @@
 rm(list=ls())
 library(data.table)
-#setwd("/Volumes/MY\ PASSPORT/Sepsis project")
-setwd("D:/Sepsis project")
+setwd("/Volumes/MY\ PASSPORT/Sepsis project")
+#setwd("D:/Sepsis project")
 files <- dir('data_mimic', recursive = TRUE, full.names = TRUE)
 
 input_cv <- fread(files[grep('INPUTEVENTS_CV.csv',files)])
@@ -111,17 +111,17 @@ tmp[,sttime := findsttime(.SD),by = list(SUBJECT_ID, HADM_ID,
                                    ICUSTAY_ID,ITEMID,LINKORDERID,sid)]
 
 ## With both starting time and ending time, hourly input can be calculated
-cal_hourly_input <-function(DT,volVarName, stVarName, etVarName){
+cal_hourly_input <-function(DT){
 ## General formula:
 ##  st for starting time
 ##  et for ending time
 ## then this input contributes to both ceiling(st) and ceiling(et) 
-r_vol <- unlist(DT[,volVarName, with = FALSE])
-#r_vol <- DT$amount
-st <- unlist(DT[,stVarName, with = FALSE])
-#st <- DT$sttime
-et <- unlist(DT[,etVarName, with = FALSE])
-#et <- DT$timetoadmit
+#r_vol <- unlist(DT[,volVarName, with = FALSE])
+r_vol <- DT$amount
+#st <- unlist(DT[,stVarName, with = FALSE])
+st <- DT$sttime
+#et <- unlist(DT[,etVarName, with = FALSE])
+et <- DT$timetoadmit
 
 ## Find the list of hours that can be calculated from this record
 t_seq <- seq(ceiling(st),ceiling(et),by=1)
