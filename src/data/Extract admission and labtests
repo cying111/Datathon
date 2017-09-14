@@ -8,6 +8,13 @@ files <- dir('data_mimic', recursive = TRUE, full.names = TRUE)
 admit <- fread(files[grep('ADMISSIONS.csv',files)])
 labs <- fread(files[grep('LABEVENTS.csv', files)])
 
+admit[, admittime:=as.POSIXct(strptime(ADMITTIME, "%Y-%m-%d %H:%M:%S"))]
+admit[, dischtime:=as.POSIXct(strptime(DISCHTIME, "%Y-%m-%d %H:%M:%S"))]
+
+admit[, hosp_los:=(dischtime-admittime)
+
 ## From admission table
 cols <- colnames(admit)
 admit_final <- admit[, c(cols[2:3],), with = FALSE]
+
+
