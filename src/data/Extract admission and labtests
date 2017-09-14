@@ -1,0 +1,13 @@
+rm(list=ls())
+library(data.table)
+setwd("/Volumes/MY\ PASSPORT/Sepsis project")
+#setwd("D:/Sepsis project")
+files <- dir('data_mimic', recursive = TRUE, full.names = TRUE)
+
+
+admit <- fread(files[grep('ADMISSIONS.csv',files)])
+labs <- fread(files[grep('LABEVENTS.csv', files)])
+
+## From admission table
+cols <- colnames(admit)
+admit_final <- admit[, c(cols[2:3],), with = FALSE]
