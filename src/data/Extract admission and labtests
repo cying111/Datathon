@@ -6,17 +6,27 @@ files <- dir('data_mimic', recursive = TRUE, full.names = TRUE)
 
 
 admit <- fread(files[grep('ADMISSIONS.csv',files)])
+d_labitems <- fread(files[grep('D_LABITEMS.csv',files)])
 labs <- fread(files[grep('LABEVENTS.csv', files)])
 
 admit[, admittime:=as.POSIXct(strptime(ADMITTIME, "%Y-%m-%d %H:%M:%S"))]
 admit[, dischtime:=as.POSIXct(strptime(DISCHTIME, "%Y-%m-%d %H:%M:%S"))]
 
-admit[, hosp_los:=as.numeric(difftime(dischtime, admittime, units = 'hours'))]
+admit[, HOS_LOS:=as.numeric(difftime(dischtime, admittime, units = 'hours'))]
 
 ## Source of infection
-admit[, ]
+sourceInf <- unique(admit$DIAGNOSIS)
+savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
+write.table(sourceInf, paste0(savedir,'admit_diagonsis.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+
 ## From admission table
 cols <- colnames(admit)
-admit_final <- admit[, c(cols[2:3],"ETHNICITY","ADMISSION_LOCATION"), with = FALSE]
+admit_final <- admit[, c(cols[2:3],"ETHNICITY","ADMISSION_LOCATION","HOSPITAL_EXPIRE_FLAG","HOS_LOS"), with = FALSE]
+setnames(admit_final,"HOSPITAL_EXPIRE_FLAG","HOS_Mortality")
+savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
+write.table(admit_final, paste0(savedir,'admit_final.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
+
+## Labs
+join_labs <-
 
