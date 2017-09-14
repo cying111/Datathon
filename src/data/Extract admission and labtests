@@ -28,5 +28,15 @@ write.table(admit_final, paste0(savedir,'admit_final.csv'), sep = ',', row.names
 
 
 ## Labs
-join_labs <-
+join_labs <- unique(merge(d_labitems[,c('ITEMID','LABEL','FLUID','CATEGORY'), with = FALSE], labs, by = c('ITEMID')), by = NULL)
 
+## Without further ado, will extract all readings for 
+## lactate, Hemoglobin, Creatinine, White blood cells, Neutrophils
+lab_names <- unique(join_labs[,c('LABEL','ITEMID'), with = FALSE], by = NULL)
+savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
+write.table(lab_names, paste0(savedir,'lab_names.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+
+labs_final[c(grep('lactate',tolower(LABEL)),
+             grep('hemoglobin',tolower(LABEL)), 
+             grep('creatinine',tolower(LABEL)),
+             grep('lactate',tolower(LABEL)))]
