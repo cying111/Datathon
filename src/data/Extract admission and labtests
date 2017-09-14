@@ -11,10 +11,12 @@ labs <- fread(files[grep('LABEVENTS.csv', files)])
 admit[, admittime:=as.POSIXct(strptime(ADMITTIME, "%Y-%m-%d %H:%M:%S"))]
 admit[, dischtime:=as.POSIXct(strptime(DISCHTIME, "%Y-%m-%d %H:%M:%S"))]
 
-admit[, hosp_los:=(dischtime-admittime)
+admit[, hosp_los:=as.numeric(difftime(admittime, dischtime, units = 'hours'))]
 
+## Source of infection
+admit[, ]
 ## From admission table
 cols <- colnames(admit)
-admit_final <- admit[, c(cols[2:3],), with = FALSE]
+admit_final <- admit[, c(cols[2:3],"ETHNICITY","ADMISSION_LOCATION"), with = FALSE]
 
 
