@@ -36,7 +36,22 @@ lab_names <- unique(join_labs[,c('LABEL','ITEMID'), with = FALSE], by = NULL)
 savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
 write.table(lab_names, paste0(savedir,'lab_names.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
-labs_final[c(grep('lactate',tolower(LABEL)),
+labs_final <- join_labs[c(grep('lactate',tolower(LABEL)),
              grep('hemoglobin',tolower(LABEL)), 
              grep('creatinine',tolower(LABEL)),
-             grep('lactate',tolower(LABEL)))]
+             grep('wbc',tolower(LABEL)))]
+savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
+write.table(labs_final, paste0(savedir,'labs_final.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+
+setkey(labs_final, SUBJECT_ID,HADM_ID,CHARTTIME)
+labs_first <- unique(labs_final[, list(lactate_value=.SD[grep('lactate',tolower(LABEL))]$VALUE[1],
+                                                  lactate_uom=.SD[grep('lactate',tolower(LABEL))]$VALUEUOM[1],
+                                                 hemoglobin=.SD[grep('hemoglobin',tolower(LABEL))]$VALUE[1],
+                                                 hemoglobin_uom=.SD[grep('hemoglobin',tolower(LABEL))]$VALUEUOM[1],
+                                                 creatinine=.SD[grep('creatinine',tolower(LABEL))]$VALUE[1],
+                                                 creatinine_uom=.SD[grep('creatinine',tolower(LABEL))]$VALUEUOM[1],
+                                                 wbc=.SD[grep('wbc',tolower(LABEL))]$VALUE[1],
+                                                 wbc_uom=.SD[grep('wbc',tolower(LABEL))]$VALUEUOM[1]),by = list(SUBJECT_ID,HADM_ID)],by=NULL)
+savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
+write.table(labs_first, paste0(savedir,'labs_first.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+
