@@ -8,6 +8,10 @@ files <- dir('data_mimic', recursive = TRUE, full.names = TRUE)
 admit <- fread(files[grep('ADMISSIONS.csv',files)])
 d_labitems <- fread(files[grep('D_LABITEMS.csv',files)])
 labs <- fread(files[grep('LABEVENTS.csv', files)])
+procedures_icd <- fread(files[grep('PROCEDURES_ICD.csv', files)])
+d_procedures <- fread(files[grep('D_ICD_PROCEDURES.csv', files)])
+
+
 
 admit[, admittime:=as.POSIXct(strptime(ADMITTIME, "%Y-%m-%d %H:%M:%S"))]
 admit[, dischtime:=as.POSIXct(strptime(DISCHTIME, "%Y-%m-%d %H:%M:%S"))]
