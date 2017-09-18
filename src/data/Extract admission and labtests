@@ -10,7 +10,8 @@ d_labitems <- fread(files[grep('D_LABITEMS.csv',files)])
 labs <- fread(files[grep('LABEVENTS.csv', files)])
 procedures_icd <- fread(files[grep('PROCEDURES_ICD.csv', files)])
 d_procedures <- fread(files[grep('D_ICD_PROCEDURES.csv', files)])
-
+chart_events <- fread(files[grep('CHARTEVENTS.csv', files)]) # spending 30 minutes read in the dataset.
+d_items <- fread(files[grep('D_ITEMS.csv', files)])
 
 
 admit[, admittime:=as.POSIXct(strptime(ADMITTIME, "%Y-%m-%d %H:%M:%S"))]
@@ -58,4 +59,45 @@ labs_first <- unique(labs_final[, list(lactate_value=.SD[grep('lactate',tolower(
                                                  wbc_uom=.SD[grep('wbc',tolower(LABEL))]$VALUEUOM[1]),by = list(SUBJECT_ID,HADM_ID)],by=NULL)
 savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
 write.table(labs_first, paste0(savedir,'labs_first.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+
+
+## Chartevents
+
+## Without further ado, will extract all readings for 
+chart_final <- chart_events[c(which(ITEMID %in% c(676:679,223761:223762)), # temperature
+             which(ITEMID %in% c(618,220210)), # respiratory rate
+             which(ITEMID %in% c(211,220045)), # heart rate
+             which(ITEMID %in% c(51,220050)), # sys bp
+             which(ITEMID %in% c(8368,220051)), # dias bp
+             which(ITEMID %in% c(52,220052)), # bp mean
+             which(ITEMID %in% c(646,220277)), # SpO2
+             which(ITEMID %in% c(3420,2981,223835)))] # FiO2
+             
+savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
+write.table(chart_final, paste0(savedir,'chart_events_final.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+
+
+setkey(chart_final, SUBJECT_ID,HADM_ID,ICUSTAY_ID, CHARTTIME)
+chart_first <- unique(chart_final[, list(temp_value=.SD[which(ITEMID %in% c(676:679,223761:223762))]$VALUE[1],
+                                                  temp_uom=.SD[which(ITEMID %in% c(676:679,223761:223762))]$VALUEUOM[1],
+                                                resp_rate=.SD[which(ITEMID %in% c(618,220210))]$VALUE[1],
+                                                 resp_rate_uom=.SD[which(ITEMID %in% c(618,220210))]$VALUEUOM[1],
+                                                 heart_rate=.SD[which(ITEMID %in% c(211,220045))]$VALUE[1],
+                                                 heart_rate_uom=.SD[which(ITEMID %in% c(211,220045))]$VALUEUOM[1],
+                                                 sys_bp=.SD[which(ITEMID %in% c(51,220050))]$VALUE[1],
+                                                 sys_bp_uom=.SD[which(ITEMID %in% c(51,220050))]$VALUEUOM[1],
+                                                 dias_bp=.SD[which(ITEMID %in% c(8368,220051))]$VALUE[1],
+                                                 dias_bp_uom=.SD[which(ITEMID %in% c(8368,220051))]$VALUEUOM[1],
+                                                 mean_bp=.SD[which(ITEMID %in% c(52,220052))]$VALUE[1],
+                                                 mean_bp_uom=.SD[which(ITEMID %in% c(52,220052))]$VALUEUOM[1],
+                                                 spo2=.SD[which(ITEMID %in% c(646,220277))]$VALUE[1],
+                                                 spo2_uom=.SD[which(ITEMID %in% c(646,220277))]$VALUEUOM[1],
+                                                 fio2=.SD[which(ITEMID %in% c(3420,2981,223835))]$VALUE[1],
+                                                 fio2_uom=.SD[which(ITEMID %in% c(3420,2981,223835))]$VALUEUOM[1]
+                                                 ),by = list(SUBJECT_ID,HADM_ID,ICUSTAY_ID)],by=NULL)
+savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
+write.table(chart_first, paste0(savedir,'chart_events_first.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+
+
+
 
