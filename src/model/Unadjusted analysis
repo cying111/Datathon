@@ -5,9 +5,28 @@ setwd(wkdir)
 raw_data <- fread('raw_data.csv')
 labs_first <- fread('labs_first.csv')
 
-data <- merge(raw_data, labs_first, by = c('SUBJECT_ID','HADM_ID'),all.x=TRUE, all.y=FALSE)
+setnames(labs_first,'SUBJECT_ID',tolower('SUBJECT_ID'))
+setnames(labs_first,'HADM_ID',tolower('HADM_ID'))
 
-## For each of the variables
-## Plot the distribution to check whether data makes sense
+data <- merge(raw_data, labs_first, by = tolower(c('SUBJECT_ID','HADM_ID')),all.x=TRUE, all.y=FALSE)
+data$lactate <- as.numeric(data$lactate)
+data$hemoglobin <- as.numeric(data$hemoglobin)
+data$creatinine <- as.numeric(data$creatinine)
+data$wbc <- as.numeric(data$wbc)
+data$neutrophils<- as.numeric(data$neutrophils)
 
+## 
+id1 <-
+id2 <- which()
+id3 <- which()
+data[,V1:=NULL]
+var.chart <- 22:37
+data_final <- unique(data[first_icu_stay=='Y' &(age>=16)&(los_icu>3),-c(var.chart), with = FALSE],by=NULL)
+
+## Augus criterion
+data_sepsis <- data_final[angus==1]
+
+data_sepsis_patients <- data_sepsis[]
+### For categorical variables 
+m <- table(data[,c('hospital_expire_flag',var)])
 
