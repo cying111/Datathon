@@ -1,1 +1,11 @@
+rm(list = ls())
+library(data.table)
+wkdir <- '/Users/llc/Documents/Sepsis working folder/data/'
+setwd(wkdir)
+raw_data <- fread('raw_data.csv')
+labs_first <- fread('labs_first.csv')
 
+data <- merge(raw_data, labs_first, by = c('SUBJECT_ID','HADM_ID'),all.x=TRUE, all.y=FALSE)
+
+## For each of the variables
+## Plot the distribution to check whether data makes sense
