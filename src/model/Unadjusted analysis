@@ -9,3 +9,5 @@ data <- merge(raw_data, labs_first, by = c('SUBJECT_ID','HADM_ID'),all.x=TRUE, a
 
 ## For each of the variables
 ## Plot the distribution to check whether data makes sense
+
+
