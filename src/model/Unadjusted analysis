@@ -3,6 +3,15 @@ library(data.table)
 wkdir <- '/Users/llc/Documents/Sepsis working folder/data/'
 setwd(wkdir)
 raw_data <- fread('raw_data.csv')
+fb_wide <- fread('final_fb_wide.csv')
+var.fb <- c(39:43)
+raw_data <-raw_data[,-var.fb, with = FALSE]
+setnames(fb_wide,'SUBJECT_ID',tolower('SUBJECT_ID'))
+setnames(fb_wide,'HADM_ID',tolower('HADM_ID'))
+setnames(fb_wide,'ICUSTAY_ID',tolower('ICUSTAY_ID'))
+raw_data <- merge(raw_data, fb_wide, by = tolower(c('SUBJECT_ID','HADM_ID','ICUSTAY_ID')),all.x=TRUE, all.y=FALSE)
+
+
 labs_first <- fread('labs_first.csv')
 
 setnames(labs_first,'SUBJECT_ID',tolower('SUBJECT_ID'))
@@ -23,7 +32,51 @@ data_final <- unique(data[first_icu_stay=='Y' &(age>=16)&(los_icu>3),-c(var.char
 ## Augus criterion
 data_sepsis <- data_final[angus==1]
 
-data_sepsis_patients <- data_sepsis[]
 ### For categorical variables 
-m <- table(data[,c('hospital_expire_flag',var)])
+var.names <- c("gender" ,"ethnicity","admission_type")
+for(var in var.names){
+m <- table(data_sepsis[,c(var,'hospital_expire_flag'), with = FALSE])
+pm <- prop.table(m,margin = 2)
+dm <-dim(m)
+print(matrix(paste(m,'(', round(pm*100,1),')'),dm[1],dm[2]))
+print(fisher.test(m)$p.value)
 
+}
+
+
+## For continuous outcomes
+var.names <-c("age" ,"weight","height","los_hospital","los_icu","duration_hours",
+"gcseyes","gcsmotor","gcsverbal","mingcs", "lactate" ,"hemoglobin","creatinine","wbc","neutrophils",
+"fb3hr","fb12hr" ,"fb24hr","fb48hr","fb72hr" )
+for(var in var.names){
+vec1 <- as.numeric(unlist(data_sepsis[hospital_expire_flag==0,var, with=FALSE]))
+vec2 <- as.numeric(unlist(data_sepsis[hospital_expire_flag==1,var, with=FALSE]))
+m <- c(mean(vec1,na.rm=TRUE),
+       mean(vec2,na.rm=TRUE))
+sd <-c(sd(vec1,na.rm=TRUE),
+       sd(vec2,na.rm=TRUE))
+ med <- c(median(vec1,na.rm=TRUE),
+       median(vec2,na.rm=TRUE))
+  iqr <- cbind(quantile(vec1, probs= c(0.25, 0.75),na.rm=TRUE),
+  quantile(vec2, probs= c(0.25, 0.75),na.rm=TRUE))
+  print(var)
+  print(paste(round(m,1),"(",round(sd,1),")"))
+  print(paste(round(med,1),"(",round(iqr[1,],1),",",round(iqr[2,],1),")"))
+  print(t.test(vec1,vec2)$p.value)
+  print(wilcox.test(vec1,vec2)$p.value)
+}
+
+
+tmp <- data_sepsis
+tmp$gender <- as.factor(tmp$gender)
+tmp$ethnicity <- as.factor(tmp$ethnicity)
+tmp$admission_type <- as.factor(tmp$admission_type)
+tmp$first_hosp_stay <- as.factor(tmp$first_hosp_stay)
+tmp$first_careunit <- as.factor(tmp$first_careunit)
+tmp$last_careunit <- as.factor(tmp$last_careunit)
+tmp$first_icu_stay<- as.factor(tmp$first_icu_stay)
+tmp$lactate_uom <- as.factor(tmp$lactate_uom)
+tmp$hemoglobin_uom <- as.factor(tmp$hemoglobin_uom)
+tmp$creatinine_uom  <- as.factor(tmp$creatinine_uom )
+tmp$wbc_uom <- as.factor(tmp$wbc_uom)
+tmp$neutrophils_uom <- as.factor(tmp$neutrophils_uom)
