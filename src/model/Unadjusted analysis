@@ -16,9 +16,6 @@ data$wbc <- as.numeric(data$wbc)
 data$neutrophils<- as.numeric(data$neutrophils)
 
 ## 
-id1 <-
-id2 <- which()
-id3 <- which()
 data[,V1:=NULL]
 var.chart <- 22:37
 data_final <- unique(data[first_icu_stay=='Y' &(age>=16)&(los_icu>3),-c(var.chart), with = FALSE],by=NULL)
