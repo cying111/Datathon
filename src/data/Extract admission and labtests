@@ -41,22 +41,26 @@ lab_names <- unique(join_labs[,c('LABEL','ITEMID'), with = FALSE], by = NULL)
 savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
 write.table(lab_names, paste0(savedir,'lab_names.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
-labs_final <- join_labs[c(grep('lactate',tolower(LABEL)),
-             grep('hemoglobin',tolower(LABEL)), 
-             grep('creatinine',tolower(LABEL)),
-             grep('wbc',tolower(LABEL)))]
+labs_final <- join_labs[c(grep('50813',tolower(LABEL)), # lactate
+             which(ITEMID %in% c(50811,51222)), # hemoglobin
+             grep('50912',tolower(ITEMID)), # creatinine
+             grep('51300',tolower(ITEMID)), # wbc
+             which(ITEMID %in% c(51232,  51256)))]
 savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
 write.table(labs_final, paste0(savedir,'labs_final.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
 setkey(labs_final, SUBJECT_ID,HADM_ID,CHARTTIME)
-labs_first <- unique(labs_final[, list(lactate_value=.SD[grep('lactate',tolower(LABEL))]$VALUE[1],
-                                                  lactate_uom=.SD[grep('lactate',tolower(LABEL))]$VALUEUOM[1],
-                                                 hemoglobin=.SD[grep('hemoglobin',tolower(LABEL))]$VALUE[1],
-                                                 hemoglobin_uom=.SD[grep('hemoglobin',tolower(LABEL))]$VALUEUOM[1],
-                                                 creatinine=.SD[grep('creatinine',tolower(LABEL))]$VALUE[1],
-                                                 creatinine_uom=.SD[grep('creatinine',tolower(LABEL))]$VALUEUOM[1],
-                                                 wbc=.SD[grep('wbc',tolower(LABEL))]$VALUE[1],
-                                                 wbc_uom=.SD[grep('wbc',tolower(LABEL))]$VALUEUOM[1]),by = list(SUBJECT_ID,HADM_ID)],by=NULL)
+labs_first <- unique(labs_final[, list(lactate=.SD[grep('50813',tolower(LABEL))]$VALUE[1],
+                                                  lactate_uom=.SD[grep('50813',tolower(LABEL))]$VALUEUOM[1],
+                                                 hemoglobin=.SD[which(ITEMID %in% c(50811,51222))]$VALUE[1],
+                                                 hemoglobin_uom=.SD[which(ITEMID %in% c(50811,51222))]$VALUEUOM[1],
+                                                 creatinine=.SD[grep('50912',tolower(ITEMID))]$VALUE[1],
+                                                 creatinine_uom=.SD[grep('50912',tolower(ITEMID))]$VALUEUOM[1],
+                                                 wbc=.SD[grep('51300',tolower(ITEMID))]$VALUE[1],
+                                                 wbc_uom=.SD[grep('51300',tolower(ITEMID))]$VALUEUOM[1],
+                                                 neutrophils=.SD[which(ITEMID %in% c(51232,  51256))]$VALUE[1],
+                                                 neutrophils_uom=.SD[which(ITEMID %in% c(51232,  51256))]$VALUEUOM[1]),
+                                                 by = list(SUBJECT_ID,HADM_ID)],by=NULL)
 savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
 write.table(labs_first, paste0(savedir,'labs_first.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
