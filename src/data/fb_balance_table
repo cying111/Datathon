@@ -286,7 +286,12 @@ data <- lapply(files,function(file){
 data <- fread(file)
 data
 })
-input <- do.call('rbind',data[1:2]) # 56956
+
+## If there are same ICUSTAYID recorded in both systems, using careVue 
+tmp <- unique(data[[1]][,c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'),with=FALSE],by=NULL)
+tmp2 <- unique(data[[2]][,c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'),with=FALSE],by=NULL)
+ids <- intersect(tmp$ICUSTAY_ID,tmp2$ICUSTAY_ID)
+input <- do.call('rbind',list(data[[1]],data[[2]][!(ICUSTAY_ID %in% ids)])) # 56956
 setnames(input,'tot_vol','input_vol')
 output <- data[[3]] # 54752
 setnames(output,'tot_vol','output_vol')
