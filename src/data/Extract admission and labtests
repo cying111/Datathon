@@ -12,7 +12,7 @@ procedures_icd <- fread(files[grep('PROCEDURES_ICD.csv', files)])
 d_procedures <- fread(files[grep('D_ICD_PROCEDURES.csv', files)])
 chart_events <- fread(files[grep('CHARTEVENTS.csv', files)]) # spending 30 minutes read in the dataset.
 d_items <- fread(files[grep('D_ITEMS.csv', files)])
-
+icustays <- fread(files[grep('data_mimic/ICUSTAYS.csv', files)])
 
 admit[, admittime:=as.POSIXct(strptime(ADMITTIME, "%Y-%m-%d %H:%M:%S"))]
 admit[, dischtime:=as.POSIXct(strptime(DISCHTIME, "%Y-%m-%d %H:%M:%S"))]
