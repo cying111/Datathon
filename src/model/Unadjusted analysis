@@ -64,9 +64,9 @@ print(fisher.test(m)$p.value)
 ## For continuous outcomes
 
 ## temperature need to covert between C and F
-id <- data_sepsis[grep('f', tolower(temp_uom)]
-data_sepsis[, temp_value:=(temp_value-32)*5/9]
-data_sepsis[, temp_uom:="Deg.C"]
+id <- data_sepsis[grep('f', tolower(temp_uom))]
+data_sepsis[id, temp_value:=(temp_value-32)*5/9]
+data_sepsis[id, temp_uom:="Deg.C"]
 
 ## Ethnicity
 data_sepsis[, eth_cat:='Others']
