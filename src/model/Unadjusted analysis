@@ -50,7 +50,7 @@ data_final <- data[first_icu_stay=='Y' &(age>=16)&(los_icu>3)]
 data_sepsis <- data_final[angus==1]
 
 ### For categorical variables 
-var.names <- c("gender" ,"ethnicity","admission_type")
+var.names <- c("gender" ,"eth_cat","admission_type")
 for(var in var.names){
 m <- table(data_sepsis[,c(var,'hospital_expire_flag'), with = FALSE])
 pm <- prop.table(m,margin = 2)
@@ -67,6 +67,14 @@ print(fisher.test(m)$p.value)
 id <- data_sepsis[grep('f', tolower(temp_uom)]
 data_sepsis[, temp_value:=(temp_value-32)*5/9]
 data_sepsis[, temp_uom:="Deg.C"]
+
+## Ethnicity
+data_sepsis[, eth_cat:='Others']
+data_sepsis[grep('white', tolower(ethnicity)), eth_cat:='White']
+data_sepsis[grep('black', tolower(ethnicity)), eth_cat:='Black']
+data_sepsis[grep('asian', tolower(ethnicity)), eth_cat:='Asian']
+data_sepsis[grep('hispanic', tolower(ethnicity)), eth_cat:='Hispanic']
+
 var.names <-c("age" ,"weight","height","los_hospital","los_icu","duration_hours",
 "gcseyes","gcsmotor","gcsverbal","mingcs", "lactate" ,"hemoglobin","creatinine","wbc","neutrophils",
 "fb3hr","fb12hr" ,"fb24hr","fb48hr","fb72hr","temp_value","resp_rate","heart_rate","sys_bp","dias_bp","mean_bp","spo2","fio2")
