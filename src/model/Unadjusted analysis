@@ -1,19 +1,26 @@
 rm(list = ls())
 library(data.table)
-wkdir <- '/Users/llc/Documents/Sepsis working folder/data/'
+#wkdir <- '/Users/llc/Documents/Sepsis working folder/data/'
+wkdir <- 'D:/Sepsis working folder/data'
 setwd(wkdir)
 raw_data <- fread('raw_data.csv')
 fb_wide <- fread('final_fb_wide.csv')
+chart_event <- fread('chart_events_first.csv')
 var.fb <- c(39:43)
 raw_data <-raw_data[,-var.fb, with = FALSE]
 setnames(fb_wide,'SUBJECT_ID',tolower('SUBJECT_ID'))
 setnames(fb_wide,'HADM_ID',tolower('HADM_ID'))
 setnames(fb_wide,'ICUSTAY_ID',tolower('ICUSTAY_ID'))
 raw_data <- merge(raw_data, fb_wide, by = tolower(c('SUBJECT_ID','HADM_ID','ICUSTAY_ID')),all.x=TRUE, all.y=FALSE)
+var.chart <- 23:38
+raw_data <-raw_data[,-var.chart, with = FALSE]
+setnames(chart_event,'SUBJECT_ID',tolower('SUBJECT_ID'))
+setnames(chart_event,'HADM_ID',tolower('HADM_ID'))
+setnames(chart_event,'ICUSTAY_ID',tolower('ICUSTAY_ID'))
+raw_data <- merge(raw_data, chart_event, by = tolower(c('SUBJECT_ID','HADM_ID','ICUSTAY_ID')),all.x=TRUE, all.y=FALSE)
 
 
 labs_first <- fread('labs_first.csv')
-
 setnames(labs_first,'SUBJECT_ID',tolower('SUBJECT_ID'))
 setnames(labs_first,'HADM_ID',tolower('HADM_ID'))
 
@@ -24,10 +31,20 @@ data$creatinine <- as.numeric(data$creatinine)
 data$wbc <- as.numeric(data$wbc)
 data$neutrophils<- as.numeric(data$neutrophils)
 
+data$temp_value <- as.numeric(data$temp_value)
+data$resp_rate <- as.numeric(data$resp_rate)
+data$heart_rate <- as.numeric(data$heart_rate)
+data$sys_bp <- as.numeric(data$sys_bp)
+data$dias_bp <- as.numeric(data$dias_bp)
+data$mean_bp <- as.numeric(data$mean_bp)
+data$spo2 <- as.numeric(data$spo2)
+data$fio2 <- as.numeric(data$fio2)
+
+
 ## 
 data[,V1:=NULL]
-var.chart <- 22:37
-data_final <- unique(data[first_icu_stay=='Y' &(age>=16)&(los_icu>3),-c(var.chart), with = FALSE],by=NULL)
+#var.chart <- 22:37
+data_final <- data[first_icu_stay=='Y' &(age>=16)&(los_icu>3)]
 
 ## Augus criterion
 data_sepsis <- data_final[angus==1]
@@ -45,9 +62,14 @@ print(fisher.test(m)$p.value)
 
 
 ## For continuous outcomes
+
+## temperature need to covert between C and F
+id <- data_sepsis[grep('f', tolower(temp_uom)]
+data_sepsis[, temp_value:=(temp_value-32)*5/9]
+data_sepsis[, temp_uom:="Deg.C"]
 var.names <-c("age" ,"weight","height","los_hospital","los_icu","duration_hours",
 "gcseyes","gcsmotor","gcsverbal","mingcs", "lactate" ,"hemoglobin","creatinine","wbc","neutrophils",
-"fb3hr","fb12hr" ,"fb24hr","fb48hr","fb72hr" )
+"fb3hr","fb12hr" ,"fb24hr","fb48hr","fb72hr","temp_value","resp_rate","heart_rate","sys_bp","dias_bp","mean_bp","spo2","fio2")
 for(var in var.names){
 vec1 <- as.numeric(unlist(data_sepsis[hospital_expire_flag==0,var, with=FALSE]))
 vec2 <- as.numeric(unlist(data_sepsis[hospital_expire_flag==1,var, with=FALSE]))
@@ -80,3 +102,13 @@ tmp$hemoglobin_uom <- as.factor(tmp$hemoglobin_uom)
 tmp$creatinine_uom  <- as.factor(tmp$creatinine_uom )
 tmp$wbc_uom <- as.factor(tmp$wbc_uom)
 tmp$neutrophils_uom <- as.factor(tmp$neutrophils_uom)
+tmp$temp_uom <- as.factor(tmp$temp_uom)
+tmp$resp_rate_uom <- as.factor(tmp$resp_rate_uom)
+tmp$heart_rate_uom  <- as.factor(tmp$heart_rate_uom )
+tmp$sys_bp_uom <- as.factor(tmp$sys_bp_uom)
+tmp$dias_bp_uom <- as.factor(tmp$dias_bp_uom)
+tmp$mean_bp_uom  <- as.factor(tmp$mean_bp_uom )
+tmp$spo2_uom <- as.factor(tmp$spo2_uom)
+tmp$fio2_uom <- as.factor(tmp$fio2_uom)
+
+summary(tmp)
