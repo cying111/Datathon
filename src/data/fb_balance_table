@@ -287,18 +287,28 @@ data <- fread(file)
 data
 })
 
-## Compare the similarity between the two systems 
-data[[1]][ICUSTAY_ID %in% ]   data[[2]
+## Compare the similarity between the two systems
+cv <- data[[1]]
+mv <- data[[2]]
+setkey(cv,SUBJECT_ID,HADM_ID,ICUSTAY_ID)
+setkey(mv,SUBJECT_ID,HADM_ID,ICUSTAY_ID)
+cv[ICUSTAY_ID %in% bothicu]   mv[ICUSTAY_ID %in% bothicu]
+## ICUSTAY_ID: 260665, 64 hour input, cv report 65, mv report 1680
+
 
 
 ## If there are same ICUSTAYID recorded in both systems, using careVue 
 ## remove those icustays recorded in both systems for system transferring
-input <- do.call('rbind',list(data[[1]],data[[2]][!(ICUSTAY_ID %in% ids)])) # 56956
+
+input <- do.call('rbind',list(cv[!(ICUSTAY_ID %in% bothicu)],mv[!(ICUSTAY_ID %in% bothicu)])) # 56956
+## merge input with dbsource
+tmp <- merge(dbsource,input,by = c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'),all.x=FALSE,all.y=FALSE)
+input <- tmp
 setnames(input,'tot_vol','input_vol')
 output <- data[[3]] # 54752
 setnames(output,'tot_vol','output_vol')
 length(intersect(unique(input$ICUSTAY_ID),unique(output$ICUSTAY_ID))) 
-# 54582 ICUSTAYs have both input and output recorded
+# 54443 ICUSTAYs have both input and output recorded
 all_merged <- merge(input, output, by = c('SUBJECT_ID', 'HADM_ID',
                                    'ICUSTAY_ID','c_time'), all = FALSE)
 ## set NA values to 0
