@@ -15,6 +15,15 @@ icustays <- fread(files[grep('ICUSTAYS.csv',files)])
 icustays[, intime:=as.POSIXct(strptime(INTIME, "%Y-%m-%d %H:%M:%S"))]
 icustays[, outtime:=as.POSIXct(strptime(OUTTIME, "%Y-%m-%d %H:%M:%S"))]
 
+## extract DBSOURCE
+dbsource <- icustays[, c('SUBJECT_ID','HADM_ID','ICUSTAY_ID','DBSOURCE')]
+bothicu <- icustays[DBSOURCE=='both']$ICUSTAY_ID
+savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
+write.table(dbsource, paste0(savedir,'dbsource.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+
+
+
+
 ##Join item labels with the input and output table
 join_tables_cv <- unique(merge(d_items[,c('ITEMID','LABEL'), with = FALSE], input_cv, by = c('ITEMID')), by = NULL)
 join_tables_mv <- unique(merge(d_items[,c('ITEMID','LABEL'), with = FALSE], input_mv, by = c('ITEMID')), by = NULL)
@@ -278,10 +287,12 @@ data <- fread(file)
 data
 })
 
+## Compare the similarity between the two systems 
+data[[1]][ICUSTAY_ID %in% ]   data[[2]
+
+
 ## If there are same ICUSTAYID recorded in both systems, using careVue 
-tmp <- unique(data[[1]][,c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'),with=FALSE],by=NULL)
-tmp2 <- unique(data[[2]][,c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'),with=FALSE],by=NULL)
-ids <- intersect(tmp$ICUSTAY_ID,tmp2$ICUSTAY_ID)
+## remove those icustays recorded in both systems for system transferring
 input <- do.call('rbind',list(data[[1]],data[[2]][!(ICUSTAY_ID %in% ids)])) # 56956
 setnames(input,'tot_vol','input_vol')
 output <- data[[3]] # 54752
