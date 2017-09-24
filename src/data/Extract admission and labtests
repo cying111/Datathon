@@ -7,12 +7,13 @@ files <- dir('data_mimic', recursive = TRUE, full.names = TRUE)
 
 admit <- fread(files[grep('ADMISSIONS.csv',files)])
 d_labitems <- fread(files[grep('D_LABITEMS.csv',files)])
-labs <- fread(files[grep('LABEVENTS.csv', files)])
+#labs <- fread(files[grep('LABEVENTS.csv', files)])
 procedures_icd <- fread(files[grep('PROCEDURES_ICD.csv', files)])
 d_procedures <- fread(files[grep('D_ICD_PROCEDURES.csv', files)])
-chart_events <- fread(files[grep('CHARTEVENTS.csv', files)]) # spending 30 minutes read in the dataset.
+#chart_events <- fread(files[grep('CHARTEVENTS.csv', files)]) # spending 30 minutes read in the dataset.
 d_items <- fread(files[grep('D_ITEMS.csv', files)])
 icustays <- fread(files[grep('data_mimic/ICUSTAYS.csv', files)])
+diagnosis <- fread(files[grep('DIAGNOSES_ICD.csv',files)])
 
 admit[, admittime:=as.POSIXct(strptime(ADMITTIME, "%Y-%m-%d %H:%M:%S"))]
 admit[, dischtime:=as.POSIXct(strptime(DISCHTIME, "%Y-%m-%d %H:%M:%S"))]
@@ -27,10 +28,17 @@ write.table(sourceInf, paste0(savedir,'admit_diagonsis.csv'), sep = ',', row.nam
 ## From admission table
 cols <- colnames(admit)
 admit_final <- admit[, c(cols[2:3],"ADMISSION_LOCATION"), with = FALSE]
-setnames(admit_final,"HOSPITAL_EXPIRE_FLAG","HOS_Mortality")
+#setnames(admit_final,"HOSPITAL_EXPIRE_FLAG","HOS_Mortality")
 savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
-write.table(admit_final, paste0(savedir,'admit_final.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+write.table(admit_final, paste0(savedir,'admit_loc.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
+## Dialysis: 3995--hemodialysis
+## ESKD: 3927-- dialysis arteriovenostom; 5498--peritoneal dialysis; icd 9 code: 5856
+## eskd identified in diagnosis table
+diagnosis[, eskd:=as.numeric(5856 %in% ICD9_CODE), by = list(SUBJECT_ID,HADM_ID)]
+dialysis <- procedures_icd[, list(dialysis=as.numeric(3995 %in% ICD9_CODE),
+                                  eskd=as.numeric(3927 %in% ICD9_CODE | (5498 %in% ICD9_CODE))), by = list(SUBJECT_ID,HADM_ID)]
+         
 
 ## Labs
 join_labs <- unique(merge(d_labitems[,c('ITEMID','LABEL','FLUID','CATEGORY'), with = FALSE], labs, by = c('ITEMID')), by = NULL)
@@ -60,7 +68,7 @@ labs_first <- unique(labs_final[, list(lactate=.SD[grep('50813',tolower(ITEMID))
                                                  wbc_uom=.SD[grep('51301',tolower(ITEMID))]$VALUEUOM[1],
                                                  neutrophils=.SD[which(ITEMID %in% c( 51256))]$VALUE[1],
                                                  neutrophils_uom=.SD[which(ITEMID %in% c(51256))]$VALUEUOM[1]),
-                                                 by = list(SUBJECT_ID,HADM_ID)],by=NULL)
+                                                 by = list(SUBJECT_ID,HADM_ID)],by=NULL)by
 savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
 write.table(labs_first, paste0(savedir,'labs_first.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
