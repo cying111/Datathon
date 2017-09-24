@@ -26,7 +26,7 @@ write.table(sourceInf, paste0(savedir,'admit_diagonsis.csv'), sep = ',', row.nam
 
 ## From admission table
 cols <- colnames(admit)
-admit_final <- admit[, c(cols[2:3],"ETHNICITY","ADMISSION_LOCATION","HOSPITAL_EXPIRE_FLAG","HOS_LOS"), with = FALSE]
+admit_final <- admit[, c(cols[2:3],"ADMISSION_LOCATION"), with = FALSE]
 setnames(admit_final,"HOSPITAL_EXPIRE_FLAG","HOS_Mortality")
 savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
 write.table(admit_final, paste0(savedir,'admit_final.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
