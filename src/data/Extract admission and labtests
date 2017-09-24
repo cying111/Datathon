@@ -82,30 +82,37 @@ write.table(labs_first, paste0(savedir,'labs_first.csv'), sep = ',', row.names =
 ## Chartevents
 
 ## Without further ado, will extract all readings for 
-chart_final <- chart_events[c(which(ITEMID %in% c(676:679,223761:223762)), # temperature
-             which(ITEMID %in% c(618,220210)), # respiratory rate
-             which(ITEMID %in% c(211,220045)), # heart rate
-             which(ITEMID %in% c(51,220050)), # sys bp
-             which(ITEMID %in% c(8368,220051)), # dias bp
-             which(ITEMID %in% c(52,220052)), # bp mean
-             which(ITEMID %in% c(646,220277)), # SpO2
-             which(ITEMID %in% c(3420,2981,223835)))] # FiO2
-             
+#  itemid in (211,220045) and valuenum > 0 and valuenum < 300 then 1 -- HeartRate
+#  itemid in (51,442,455,6701,220179,220050) and valuenum > 0 and valuenum < 400 then 2 -- SysBP
+#  itemid in (8368,8440,8441,8555,220180,220051) and valuenum > 0 and valuenum < 300 then 3 -- DiasBP
+#  itemid in (456,52,6702,443,220052,220181,225312) and valuenum > 0 and valuenum < 300 then 4 -- MeanBP
+#  itemid in (615,618,220210,224690) and valuenum > 0 and valuenum < 70 then 5 -- RespRate
+#  itemid in (223761,678) and valuenum > 70 and valuenum < 120  then 6 -- TempF, converted to degC in valuenum call
+#  itemid in (223762,676) and valuenum > 10 and valuenum < 50  then 6 — TempC
+
+chart_final <- list(chart_events[which(ITEMID %in% c(211,220045) &(VALUENUM>0 &(VALUENUM < 300))], # HeartRate
+                    chart_events[which(ITEMID %in% c(51,442,455,6701,220179,220050) &(VALUENUM>0 &(VALUENUM < 400))], # SysBP
+                    chart_events[which(ITEMID %in% c(8368,8440,8441,8555,220180,220051) &(VALUENUM>0 &(VALUENUM < 300))], # DiasBP
+                    chart_events[which(ITEMID %in% c(456,52,6702,443,220052,220181,225312) &(VALUENUM>0 &(VALUENUM < 300))], # MeanBP
+                    chart_events[which(ITEMID %in% c(615,618,220210,224690) &(VALUENUM>0 &(VALUENUM < 70))], # RespRate
+                    chart_events[which(ITEMID %in% c(223761,678) &(VALUENUM>70 &(VALUENUM < 120))], # TempF
+                    chart_events[which(ITEMID %in% c(223762,676) &(VALUENUM>10 &(VALUENUM < 50))]) # TempC
+
 savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
 write.table(chart_final, paste0(savedir,'chart_events_final.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
 
 setkey(chart_final, SUBJECT_ID,HADM_ID,ICUSTAY_ID, CHARTTIME)
-chart_first <- unique(chart_final[, list(temp_value=.SD[which(ITEMID %in% c(676:679,223761:223762))]$VALUE[1],
-                                                  temp_uom=.SD[which(ITEMID %in% c(676:679,223761:223762))]$VALUEUOM[1],
-                                                resp_rate=.SD[which(ITEMID %in% c(618,220210))]$VALUE[1],
-                                                 resp_rate_uom=.SD[which(ITEMID %in% c(618,220210))]$VALUEUOM[1],
-                                                 heart_rate=.SD[which(ITEMID %in% c(211,220045))]$VALUE[1],
-                                                 heart_rate_uom=.SD[which(ITEMID %in% c(211,220045))]$VALUEUOM[1],
-                                                 sys_bp=.SD[which(ITEMID %in% c(51,220050))]$VALUE[1],
-                                                 sys_bp_uom=.SD[which(ITEMID %in% c(51,220050))]$VALUEUOM[1],
-                                                 dias_bp=.SD[which(ITEMID %in% c(8368,220051))]$VALUE[1],
-                                                 dias_bp_uom=.SD[which(ITEMID %in% c(8368,220051))]$VALUEUOM[1],
+chart_first <- unique(chart_final[, list(temp_value=.SD[which(ITEMID %in% c(676:678,223761:223762))]$VALUENUM[1],
+                                         temp_uom=.SD[which(ITEMID %in% c(676:679,223761:223762))]$VALUEUOM[1],
+                                         resp_rate=.SD[which(ITEMID %in% c(618,220210))]$VALUE[1],
+                                         resp_rate_uom=.SD[which(ITEMID %in% c(618,220210))]$VALUEUOM[1],
+                                         heart_rate=.SD[which(ITEMID %in% c(211,220045))]$VALUE[1],
+                                         heart_rate_uom=.SD[which(ITEMID %in% c(211,220045))]$VALUEUOM[1],
+                                         sys_bp=.SD[which(ITEMID %in% c(51,220050))]$VALUE[1],
+                                         sys_bp_uom=.SD[which(ITEMID %in% c(51,220050))]$VALUEUOM[1],
+                                         dias_bp=.SD[which(ITEMID %in% c(8368,220051))]$VALUE[1],
+                                         dias_bp_uom=.SD[which(ITEMID %in% c(8368,220051))]$VALUEUOM[1],
                                                  mean_bp=.SD[which(ITEMID %in% c(52,220052))]$VALUE[1],
                                                  mean_bp_uom=.SD[which(ITEMID %in% c(52,220052))]$VALUEUOM[1],
                                                  spo2=.SD[which(ITEMID %in% c(646,220277))]$VALUE[1],
