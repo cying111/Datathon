@@ -35,10 +35,16 @@ write.table(admit_final, paste0(savedir,'admit_loc.csv'), sep = ',', row.names =
 ## Dialysis: 3995--hemodialysis
 ## ESKD: 3927-- dialysis arteriovenostom; 5498--peritoneal dialysis; icd 9 code: 5856
 ## eskd identified in diagnosis table
-diagnosis[, eskd:=as.numeric(5856 %in% ICD9_CODE), by = list(SUBJECT_ID,HADM_ID)]
+eskd <- unique(diagnosis[, list(eskd1=as.numeric(5856 %in% ICD9_CODE)), by = list(SUBJECT_ID,HADM_ID)],by=NULL)
+
 dialysis <- procedures_icd[, list(dialysis=as.numeric(3995 %in% ICD9_CODE),
-                                  eskd=as.numeric(3927 %in% ICD9_CODE | (5498 %in% ICD9_CODE))), by = list(SUBJECT_ID,HADM_ID)]
+                                  eskd2=as.numeric(3927 %in% ICD9_CODE | (5498 %in% ICD9_CODE))), by = list(SUBJECT_ID,HADM_ID)]
          
+dialysis <- merge(dialysis, eskd, by = c('SUBJECT_ID','HADM_ID'), all = TRUE)
+dialysis[,eskd:=as.numeric((eskd1+ifelse(is.na(eskd2),0,eskd2))>0)]
+savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
+write.table(dialysis, paste0(savedir,'dialysis_status.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+
 
 ## Labs
 join_labs <- unique(merge(d_labitems[,c('ITEMID','LABEL','FLUID','CATEGORY'), with = FALSE], labs, by = c('ITEMID')), by = NULL)
