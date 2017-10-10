@@ -1,0 +1,43 @@
+rm(list = ls())
+library(data.table)
+wkdir <- '/Users/llc/Documents/Sepsis working folder/data/'
+#wkdir <- 'D:/Sepsis working folder/data'
+setwd(wkdir)
+merged_data <- fread('process_data_09Oct2017.csv')
+sourceInf <- fread('source_of_infection.csv')
+setnames(sourceInf,'SUBJECT_ID','subject_id')
+setnames(sourceInf,'HADM_ID','hadm_id')
+tmp <- merge(merged_data,sourceInf, by = tolower(c('SUBJECT_ID','HADM_ID')), all.x=TRUE, all.y = FALSE)
+merged_data <- tmp
+
+dbsource <- fread('dbsource.csv')
+setnames(dbsource,'SUBJECT_ID','subject_id')
+setnames(dbsource,'HADM_ID','hadm_id')
+setnames(dbsource,'ICUSTAY_ID',tolower('ICUSTAY_ID'))
+tmp <- merge(merged_data,dbsource, by = tolower(c('SUBJECT_ID','HADM_ID','ICUSTAY_ID')), all.x=TRUE, all.y = FALSE)
+merged_data <- tmp
+
+
+## dialysis
+merged_data[is.na(dialysis),dialysis:=0]
+merged_data[is.na(eskd2),eskd2:=0]
+
+merged_data[, sourceofadm:=ifelse(ADMISSION_LOCATION %in% c('PHYS REFERRAL/NORMAL DELI',
+'TRANSFER FROM SKILLED NUR','TRSF WITHIN THIS FACILITY'), 1, ifelse(ADMISSION_LOCATION %in% c('EMERGENCY ROOM ADMIT',
+'CLINIC REFERRAL/PREMATURE','HMO REFERRAL/SICK'),2,ifelse(ADMISSION_LOCATION %in% c('TRANSFER FROM HOSP/EXTRAM',
+'TRANSFER FROM OTHER HEALT'),3,NA)))]
+
+data <- merged_data
+data[,V1:=NULL]
+data_final <- data[first_icu_stay=='Y' &(age>=16)&(los_icu>3)]
+
+## Augus criterion
+data_sepsis <- data_final[angus==1]
+
+## Data cleaning
+## Step1: remove na values
+tmp <- na.omit(data_sepsis) # 2480 rows removed, i.e., 
+
+
+## 
+ggplot()
