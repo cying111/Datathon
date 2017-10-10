@@ -1,0 +1,16 @@
+rm(list=ls())
+library(data.table)
+setwd("/Volumes/MY\ PASSPORT/Sepsis project")
+#setwd("D:/Sepsis project")
+files <- dir('data_mimic', recursive = TRUE, full.names = TRUE)
+
+diagnosis <- fread(files[grep('DIAGNOSES_ICD.csv',files)])
+
+icd_codes_pulmonary <- c('481','482','485','486','494','510','513','033','484','483','49121')
+
+diagnosis[, pul:=(ICD9_CODE %in% icd_codes_pulmonary)]
+
+sourInf <- unique(diagnosis[, list(pul=max(pul)), by = list(SUBJECT_ID,HADM_ID)],by=NULL)
+
+savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
+write.table(sourInf, paste0(savedir,'source_of_infection.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
