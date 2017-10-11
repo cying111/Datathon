@@ -3,7 +3,7 @@ library(data.table)
 #wkdir <- '/Users/llc/Documents/Sepsis working folder/data/'
 wkdir <- 'D:/Sepsis working folder/data'
 setwd(wkdir)
-merged_data <- fread('process_data_09Oct2017.csv')
+merged_data <- fread('process_data_11Oct2017.csv')
 sourceInf <- fread('source_of_infection.csv')
 setnames(sourceInf,'SUBJECT_ID','subject_id')
 setnames(sourceInf,'HADM_ID','hadm_id')
@@ -29,15 +29,73 @@ merged_data[, sourceofadm:=ifelse(ADMISSION_LOCATION %in% c('PHYS REFERRAL/NORMA
 
 data <- merged_data
 data[,V1:=NULL]
-data_final <- data[first_icu_stay=='Y' &(age>=16)&(los_icu>3)]
+data_final <- data[first_hosp_stay == 'Y' &(first_icu_stay=='Y')&(age>=16)&(los_icu>3)]
 
 ## Augus criterion
 data_sepsis <- data_final[angus==1]
+length(unique(data_final$subject_id))
+length(unique(data_sepsis$subject_id))
+length(unique(data_sepsis$subject_id))/length(unique(data_final$subject_id))
 
-## Data cleaning
-## Step1: remove na values
-tmp <- na.omit(data_sepsis) # 2480 rows removed, i.e., 
+
+length(unique(data_final$hadm_id))
+length(unique(data_sepsis$hadm_id))
+length(unique(data_sepsis$hadm_id))/length(unique(data_final$hadm_id))
 
 
-## 
-ggplot()
+### For categorical variables 
+var.names <- c("gender","admission_type",'sourceofadm','diabetes','hypertension',"congestive_heart_failure",
+"renal_failure" ,"liver_disease","cancer","aids","chronic_pulmonary","weight_loss","obesity","dialysis")
+for(var in var.names){
+m <- table(data_sepsis[,c(var,'hospital_expire_flag'), with = FALSE])
+pm <- prop.table(m,margin = 2)
+dm <-dim(m)
+print(matrix(paste(m,'(', round(pm*100,1),')'),dm[1],dm[2]))
+print(fisher.test(m)$p.value)
+
+}
+
+
+var.names <-c("age" ,"weight","height","los_hospital","los_icu","duration_hours",
+"gcseyes","gcsmotor","gcsverbal","mingcs", "lactate" ,"hemoglobin","creatinine","wbc","neutrophils",
+"fb3hr","fb12hr" ,"fb24hr","fb48hr","fb72hr","temp_value","resp_rate","heart_rate","sys_bp","dias_bp","mean_bp","sofa","oasis")
+for(var in var.names){
+vec1 <- as.numeric(unlist(data_sepsis[hospital_expire_flag==0,var, with=FALSE]))
+vec2 <- as.numeric(unlist(data_sepsis[hospital_expire_flag==1,var, with=FALSE]))
+m <- c(mean(vec1,na.rm=TRUE),
+       mean(vec2,na.rm=TRUE))
+sd <-c(sd(vec1,na.rm=TRUE),
+       sd(vec2,na.rm=TRUE))
+ med <- c(median(vec1,na.rm=TRUE),
+       median(vec2,na.rm=TRUE))
+  iqr <- cbind(quantile(vec1, probs= c(0.25, 0.75),na.rm=TRUE),
+  quantile(vec2, probs= c(0.25, 0.75),na.rm=TRUE))
+  print(var)
+  print(paste(round(m,1),"(",round(sd,1),")"))
+  print(paste(round(med,1),"(",round(iqr[1,],1),",",round(iqr[2,],1),")"))
+  print(t.test(vec1,vec2)$p.value)
+  print(wilcox.test(vec1,vec2)$p.value)
+}
+
+
+tmp <- data_sepsis
+tmp$gender <- as.factor(tmp$gender)
+tmp$admission_type <- as.factor(tmp$admission_type)
+tmp$first_hosp_stay <- as.factor(tmp$first_hosp_stay)
+tmp$first_careunit <- as.factor(tmp$first_careunit)
+tmp$last_careunit <- as.factor(tmp$last_careunit)
+tmp$first_icu_stay<- as.factor(tmp$first_icu_stay)
+tmp$lactate_uom <- as.factor(tmp$lactate_uom)
+tmp$hemoglobin_uom <- as.factor(tmp$hemoglobin_uom)
+tmp$creatinine_uom  <- as.factor(tmp$creatinine_uom )
+tmp$wbc_uom <- as.factor(tmp$wbc_uom)
+tmp$neutrophils_uom <- as.factor(tmp$neutrophils_uom)
+tmp$temp_uom <- as.factor(tmp$temp_uom)
+tmp$resp_rate_uom <- as.factor(tmp$resp_rate_uom)
+tmp$heart_rate_uom  <- as.factor(tmp$heart_rate_uom )
+tmp$sys_bp_uom <- as.factor(tmp$sys_bp_uom)
+tmp$dias_bp_uom <- as.factor(tmp$dias_bp_uom)
+tmp$mean_bp_uom  <- as.factor(tmp$mean_bp_uom )
+tmp$ADMISSION_LOCATION <- as.factor(tmp$ADMISSION_LOCATION)
+tmp$DBSOURCE <- as.factor(tmp$DBSOURCE)
+tmp$icu_expire_flag <- as.numeric(tmp$icu_expire_flag=='Y')
