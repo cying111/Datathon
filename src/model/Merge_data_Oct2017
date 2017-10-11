@@ -1,7 +1,7 @@
 rm(list = ls())
 library(data.table)
-wkdir <- '/Users/llc/Documents/Sepsis working folder/data/'
-#wkdir <- 'D:/Sepsis working folder/data'
+#wkdir <- '/Users/llc/Documents/Sepsis working folder/data/'
+wkdir <- 'D:/Sepsis working folder/data'
 setwd(wkdir)
 merged_data <- fread('process_data_09Oct2017.csv')
 sourceInf <- fread('source_of_infection.csv')
