@@ -237,6 +237,7 @@ return(list(c_vol, c_time))
 hourly_input_mv <- tmp[timetoadmitEnd>=0, list(c_time = cal_hourly_input(.SD)[[2]],
                               c_vol = cal_hourly_input(.SD)[[1]]), by=list(SUBJECT_ID, HADM_ID,
                                    ICUSTAY_ID,ROW_ID)]
+
 tmp2 <- hourly_input_mv
 
 hourly_input_mv <- unique(tmp2[,list(tot_vol = sum(c_vol,na.rm=TRUE)), by = list(SUBJECT_ID, HADM_ID,
@@ -252,6 +253,7 @@ hourly_input_mv <- merge(tmp4[c_time<=72], unique(tmp2[,c('SUBJECT_ID','HADM_ID'
                     all.x=TRUE,all.y=FALSE,allow.cartesian = FALSE)
 savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
 write.table(hourly_input_mv, paste0(savedir,'hourly_input_mv.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+
 
 
 ## For output
@@ -280,6 +282,7 @@ write.table(hourly_output, paste0(savedir,'hourly_output.csv'), sep = ',', row.n
 
 
 ## 
+files <- dir('D:)
 files <- dir('/Users/llc/Documents/Sepsis working folder/data/', full.names =TRUE)
 files <- files[grep('hourly',files)]
 data <- lapply(files,function(file){
