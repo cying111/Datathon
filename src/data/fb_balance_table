@@ -292,6 +292,7 @@ write.table(hourly_output, paste0(savedir,'hourly_output.csv'), sep = ',', row.n
 
 
 ## 
+
 files <- dir('D:)
 files <- dir('/Users/llc/Documents/Sepsis working folder/data/', full.names =TRUE)
 files <- files[grep('hourly',files)]
@@ -312,7 +313,8 @@ cv[ICUSTAY_ID %in% bothicu]   mv[ICUSTAY_ID %in% bothicu]
 
 ## If there are same ICUSTAYID recorded in both systems, using careVue 
 ## remove those icustays recorded in both systems for system transferring
-
+## Using database source to define ICUSTAYS in both systems is not accurate
+bothicu <- intersect(unique(cv$ICUSTAY_ID), unique(mv$ICUSTAY_ID))
 input <- do.call('rbind',list(cv[!(ICUSTAY_ID %in% bothicu)],mv[!(ICUSTAY_ID %in% bothicu)])) # 56956
 ## merge input with dbsource
 tmp <- merge(dbsource,input,by = c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'),all.x=FALSE,all.y=FALSE)
