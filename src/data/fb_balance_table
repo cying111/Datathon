@@ -325,6 +325,7 @@ all_merged[, fb:=(input_vol-output_vol)]
 setkey(all_merged, SUBJECT_ID, HADM_ID, ICUSTAY_ID, c_time)
 all_merged[, cumfb:=cumsum(fb), by = list(SUBJECT_ID, HADM_ID, ICUSTAY_ID)]
 savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
+savedir <- 'C:/Users/chenying/Downloads/Sepsis working folder/Sepsis working folder/data'
 write.table(all_merged, paste0(savedir,'fb_table.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
 ## final table
