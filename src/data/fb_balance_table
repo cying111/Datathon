@@ -254,7 +254,7 @@ hourly_input_mv <- unique(tmp2[,list(tot_vol = sum(c_vol,na.rm=TRUE)), by = list
                                    ICUSTAY_ID,c_time)],by=NULL)
 
 tmp3 <- hourly_input_mv[,3:5,with=FALSE]
-all_times <- seq(0, max(tmp3$c_time), by =1)  
+uall_times <- seq(0, max(tmp3$c_time), by =1)  
 ids <- unique(tmp3$ICUSTAY_ID)
 setkey(tmp3,ICUSTAY_ID,c_time)
 tmp4 <- tmp3[CJ(ids,all_times), roll = TRUE] # cross join the ICUSTAY_ID and sequence of timings that we needed to impute for hours without record.
@@ -264,17 +264,17 @@ hourly_input_mv <- merge(tmp4[c_time<=72], unique(tmp2[,c('SUBJECT_ID','HADM_ID'
 savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
 write.table(hourly_input_mv, paste0(savedir,'hourly_input_mv.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
-
+i
 
 ## For output
 tmp <- tmp_op[tolower(VALUEUOM)=='ml']
-## 36417 entries with VALUEUOM being empty space have VALUE = 0
+u## 36417 entries with VALUEUOM being empty space have VALUE = 0
 
 ## Remove entries for NA amount: 88282 entries
 tmp <- tmp[which(!is.na(VALUE))]
 tmp2 <- tmp[timetoadmit>=0, list(c_time=ceiling(timetoadmit),
                      c_vol = VALUE), by = list(SUBJECT_ID, HADM_ID,
-                                   ICUSTAY_ID,ROW_ID)]
+u                                   ICUSTAY_ID,ROW_ID)]
                                    
 hourly_output <- unique(tmp2[,list(tot_vol = sum(c_vol,na.rm=TRUE)), by = list(SUBJECT_ID, HADM_ID,
                                    ICUSTAY_ID,c_time)],by=NULL)
@@ -295,7 +295,7 @@ write.table(hourly_output, paste0(savedir,'hourly_output.csv'), sep = ',', row.n
 
 files <- dir('D:)
 files <- dir('/Users/llc/Documents/Sepsis working folder/data/', full.names =TRUE)
-files <- files[grep('hourly',files)]
+ufiles <- files[grep('hourly',files)]
 data <- lapply(files,function(file){
 data <- fread(file)
 data
