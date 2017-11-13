@@ -1,3 +1,13 @@
+## Fluid balance table algorithm:
+##  1.	Convert L to mL.
+##  2.	Adjust timing with respect to admission time
+##  3.	For input, attribute the volume hourly, Fluid input record A starting at time t1 and end at time t2. Have the following situations, examples:
+##      a.	3.5hr to 4.7hr: 3.5 to 4 contribute to fb at 4hrs; 4-4.7 contribute to fb at 5hrs. Uniformly. For this case, if starting time is 3hr, then 3 to 4 will still contribute to fb at 4hrs but no contribution to fb at 3 hrs.
+##      b.	3.5hr to 3.7hr:  3.5 to 3.7 contribute to fb at 4hrs
+##  4.	For output, attribute the volume hourly, fluid output record B at time t3
+##      a.	3.4hr, all volume will be calculated towards fb at 4hrs.
+##  5.	Then with that, we could calculate each hourly input and output, and hourly net fluid balance.
+
 rm(list=ls())
 library(data.table)
 setwd("/Volumes/MY\ PASSPORT/Sepsis project")
