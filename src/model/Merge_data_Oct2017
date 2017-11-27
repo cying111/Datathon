@@ -1,14 +1,38 @@
 rm(list = ls())
 library(data.table)
-#wkdir <- '/Users/llc/Documents/Sepsis working folder/data/'
-wkdir <- 'D:/Sepsis working folder/data'
+wkdir <- '/Volumes/My Passport/Sepsis working folder/data'
+#wkdir <- 'D:/Sepsis working folder/data'
 setwd(wkdir)
 merged_data <- fread('process_data_11Oct2017.csv')
+merged_data[,V1:=NULL]
+merged_data <- unique(merged_data, by = NULL)
+
+
+chart_events <- fread('chart_events_first.csv')
+tmp <- merged_data[,-c(43:54), with=FALSE]
+setnames(chart_events,'SUBJECT_ID','subject_id')
+setnames(chart_events,'HADM_ID','hadm_id')
+setnames(chart_events,'ICUSTAY_ID','icustay_id')
+tmp <- merge(tmp, chart_events, by = colnames(merged_data)[1:3], all.x=TRUE, all.y = FALSE)
+merged_data <- tmp
+
+fb <- fread('final_fb_wide.csv')
+tmp <- merged_data[,-c(43:47), with=FALSE]
+setnames(fb,'SUBJECT_ID','subject_id')
+setnames(fb,'HADM_ID','hadm_id')
+setnames(fb,'ICUSTAY_ID','icustay_id')
+tmp <- merge(tmp, fb, by = colnames(merged_data)[1:3], all.x=TRUE, all.y = FALSE)
+merged_data <- unique(tmp, by = NULL)
+
+
 sourceInf <- fread('source_of_infection.csv')
 setnames(sourceInf,'SUBJECT_ID','subject_id')
 setnames(sourceInf,'HADM_ID','hadm_id')
 tmp <- merge(merged_data,sourceInf, by = tolower(c('SUBJECT_ID','HADM_ID')), all.x=TRUE, all.y = FALSE)
 merged_data <- tmp
+
+
+
 
 dbsource <- fread('dbsource.csv')
 setnames(dbsource,'SUBJECT_ID','subject_id')
@@ -26,6 +50,7 @@ merged_data[, sourceofadm:=ifelse(ADMISSION_LOCATION %in% c('PHYS REFERRAL/NORMA
 'TRANSFER FROM SKILLED NUR','TRSF WITHIN THIS FACILITY'), 1, ifelse(ADMISSION_LOCATION %in% c('EMERGENCY ROOM ADMIT',
 'CLINIC REFERRAL/PREMATURE','HMO REFERRAL/SICK'),2,ifelse(ADMISSION_LOCATION %in% c('TRANSFER FROM HOSP/EXTRAM',
 'TRANSFER FROM OTHER HEALT'),3,NA)))]
+write.table()
 
 data <- merged_data
 data[,V1:=NULL]
