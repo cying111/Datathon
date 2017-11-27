@@ -1,7 +1,7 @@
 rm(list = ls())
 library(data.table)
-#wkdir <- '/Users/llc/Documents/Sepsis working folder/data/'
-wkdir <- 'D:/Sepsis working folder/data'
+wkdir <- '/Users/llc/Documents/Sepsis working folder/data/'
+#wkdir <- 'D:/Sepsis working folder/data'
 setwd(wkdir)
 raw_data <- fread('raw_data.csv')
 fb_wide <- fread('final_fb_wide.csv')
