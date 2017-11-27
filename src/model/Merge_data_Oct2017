@@ -50,14 +50,22 @@ merged_data[, sourceofadm:=ifelse(ADMISSION_LOCATION %in% c('PHYS REFERRAL/NORMA
 'TRANSFER FROM SKILLED NUR','TRSF WITHIN THIS FACILITY'), 1, ifelse(ADMISSION_LOCATION %in% c('EMERGENCY ROOM ADMIT',
 'CLINIC REFERRAL/PREMATURE','HMO REFERRAL/SICK'),2,ifelse(ADMISSION_LOCATION %in% c('TRANSFER FROM HOSP/EXTRAM',
 'TRANSFER FROM OTHER HEALT'),3,NA)))]
-write.table()
+savedir <- '/Users/llc/Documents/Sepsis working folder/data'
+write.table(merged_data, paste0(savedir,'merged_data_27112017.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+
+
 
 data <- merged_data
-data[,V1:=NULL]
+#data[,V1:=NULL]
 data_final <- data[first_hosp_stay == 'Y' &(first_icu_stay=='Y')&(age>=16)&(los_icu>3)]
+savedir <- '/Users/llc/Documents/Sepsis working folder/data'
+write.table(data_final, paste0(savedir,'data_final_27112017.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
 ## Augus criterion
 data_sepsis <- data_final[angus==1]
+savedir <- '/Users/llc/Documents/Sepsis working folder/data'
+write.table(data_sepsis, paste0(savedir,'data_sepsis_27112017.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+
 length(unique(data_final$subject_id))
 length(unique(data_sepsis$subject_id))
 length(unique(data_sepsis$subject_id))/length(unique(data_final$subject_id))
