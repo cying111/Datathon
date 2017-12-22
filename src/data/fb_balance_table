@@ -1,16 +1,7 @@
-## Fluid balance table algorithm:
-##  1.	Convert L to mL.
-##  2.	Adjust timing with respect to admission time
-##  3.	For input, attribute the volume hourly, Fluid input record A starting at time t1 and end at time t2. Have the following situations, examples:
-##      a.	3.5hr to 4.7hr: 3.5 to 4 contribute to fb at 4hrs; 4-4.7 contribute to fb at 5hrs. Uniformly. For this case, if starting time is 3hr, then 3 to 4 will still contribute to fb at 4hrs but no contribution to fb at 3 hrs.
-##      b.	3.5hr to 3.7hr:  3.5 to 3.7 contribute to fb at 4hrs
-##  4.	For output, attribute the volume hourly, fluid output record B at time t3
-##      a.	3.4hr, all volume will be calculated towards fb at 4hrs.
-##  5.	Then with that, we could calculate each hourly input and output, and hourly net fluid balance.
-
 rm(list=ls())
 library(data.table)
-setwd("/Volumes/MY\ PASSPORT/Sepsis project")
+library(readxl)
+setwd("/Volumes/MyPassport/Sepsis project")
 #setwd("D:/Sepsis project")
 files <- dir('data_mimic', recursive = TRUE, full.names = TRUE)
 
@@ -20,16 +11,20 @@ d_items <- fread(files[grep('D_ITEMS.csv',files)])#12
 output_both <- fread(files[grep('OUTPUTEVENTS.csv',files)])
 admit <- fread(files[grep('ADMISSIONS.csv',files)])
 icustays <- fread(files[grep('ICUSTAYS.csv',files)])
-
+fb_itemid <- read_xlsx('/Users/llc/Desktop/Reference table MIMIC-III Komorowski 090117.xlsx',sheet = 1, skip = 71, col_names=FALSE)
+fb_output_itemid <- setdiff(unique(unlist(fb_itemid[1:2,2:10])),NA)
+fb_input_itemid <- c(setdiff(unique(unlist(fb_itemid[c(6:38,40),3:10])),c(NA,'-')),
+                     setdiff(unique(unlist(fb_itemid[c(43:54),2:10])),c(NA,'-')))
 ##icu admission table
 icustays[, intime:=as.POSIXct(strptime(INTIME, "%Y-%m-%d %H:%M:%S"))]
 icustays[, outtime:=as.POSIXct(strptime(OUTTIME, "%Y-%m-%d %H:%M:%S"))]
 
+
 ## extract DBSOURCE
 dbsource <- icustays[, c('SUBJECT_ID','HADM_ID','ICUSTAY_ID','DBSOURCE')]
 bothicu <- icustays[DBSOURCE=='both']$ICUSTAY_ID
-savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
-write.table(dbsource, paste0(savedir,'dbsource.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+# savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
+# write.table(dbsource, paste0(savedir,'dbsource.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
 
 
@@ -87,7 +82,7 @@ summary(tmp_op)
 
 
 ## CareVue
-tmp <- tmp_cv[tolower(AMOUNTUOM)=='ml']
+tmp <- tmp_cv[tolower(AMOUNTUOM)=='ml'&(match(ITEMID,as.numeric(fb_input_itemid)))]
 ## Remove entries for NA amount
 tmp <- tmp[which(!is.na(AMOUNT))]
 ## Check if there is duplicated records at the same timing for the same item, same linkorderid but different orders
@@ -102,73 +97,73 @@ tmp <- tmp2
 ## If there are multiple bottles, need to differentiate between bottles.
 ## Define serial id for bottles
 findsid <- function(DT){ 
-newbottle <- DT$NEWBOTTLE
-newbottle[which(is.na(newbottle))] <- 0
-newbottle[DT$STOPPED=='Restart'] <- 1
-sid <- cumsum(newbottle)
-return(sid)
+  newbottle <- DT$NEWBOTTLE
+  newbottle[which(is.na(newbottle))] <- 0
+  newbottle[DT$STOPPED=='Restart'] <- 1
+  sid <- cumsum(newbottle)
+  return(sid)
 }
 
 ## Function to find start time 
 ## for the first record, the starting time will be one hour ago.
 ## for other records, the starting time will be the previous timing.
 findsttime <- function(DT){
-timings <- DT$timetoadmit
-output <- c(ifelse(timings[1]-1<0,0,timings[1]-1), timings[-length(timings)])
-return(output)
+  timings <- DT$timetoadmit
+  output <- c(ifelse(timings[1]-1<0,0,timings[1]-1), timings[-length(timings)])
+  return(output)
 }
 setkey(tmp,SUBJECT_ID,HADM_ID,ICUSTAY_ID,ITEMID,LINKORDERID,timetoadmit)
 tmp[, sid := findsid(.SD),by = list(SUBJECT_ID, HADM_ID,
-                                   ICUSTAY_ID,ITEMID,LINKORDERID)]
+                                    ICUSTAY_ID,ITEMID,LINKORDERID)]
 
 
 tmp[,sttime := findsttime(.SD),by = list(SUBJECT_ID, HADM_ID,
-                                   ICUSTAY_ID,ITEMID,LINKORDERID,sid)]
+                                         ICUSTAY_ID,ITEMID,LINKORDERID,sid)]
 
 ## With both starting time and ending time, hourly input can be calculated
 cal_hourly_input <-function(DT){
-## General formula:
-##  st for starting time
-##  et for ending time
-## then this input contributes to both ceiling(st) and ceiling(et) 
-r_vol <- DT$amount
-st <- DT$sttime
-et <- DT$timetoadmit
-
-## Find the list of hours that can be calculated from this record
-t_seq <- seq(ceiling(st),ceiling(et),by=1)
-
-if(ceiling(st)==st & (st < ceiling(et))){ # if st is already integer hour & st < ceiling(et)
-t_seq <- seq(ceiling(st)+1,ceiling(et),by=1)
-}
-
-if(ceiling(st)==ceiling(et)){ # case 2: if st and et are within the same hour
-t_seq <- ceiling(st)
-}
-n <- length(t_seq)
-
-## Find the corresponding contributing interval for the hours
-if(n>1){
-t_int_start <- c(st, t_seq[-n]) ## This is only valid when there are at least two hours can be calculated from this record
-t_int_end <- c(t_seq[-n],et)
-}else{
-t_int_start <- st
-t_int_end <- et
-}
-c_vol <- r_vol/(et-st)*(t_int_end - t_int_start)
-c_time <- t_seq
-return(list(c_vol, c_time))
+  ## General formula:
+  ##  st for starting time
+  ##  et for ending time
+  ## then this input contributes to both ceiling(st) and ceiling(et) 
+  r_vol <- DT$amount
+  st <- DT$sttime
+  et <- DT$timetoadmit
+  
+  ## Find the list of hours that can be calculated from this record
+  t_seq <- seq(ceiling(st),ceiling(et),by=1)
+  
+  if(ceiling(st)==st & (st < ceiling(et))){ # if st is already integer hour & st < ceiling(et)
+    t_seq <- seq(ceiling(st)+1,ceiling(et),by=1)
+  }
+  
+  if(ceiling(st)==ceiling(et)){ # case 2: if st and et are within the same hour
+    t_seq <- ceiling(st)
+  }
+  n <- length(t_seq)
+  
+  ## Find the corresponding contributing interval for the hours
+  if(n>1){
+    t_int_start <- c(st, t_seq[-n]) ## This is only valid when there are at least two hours can be calculated from this record
+    t_int_end <- c(t_seq[-n],et)
+  }else{
+    t_int_start <- st
+    t_int_end <- et
+  }
+  c_vol <- r_vol/(et-st)*(t_int_end - t_int_start)
+  c_time <- t_seq
+  return(list(c_vol, c_time))
 }
 rids <- 1:nrow(tmp)
 tmp$rid <- rids
 hourly_input_cv <- tmp[timetoadmit>0, list(c_time = cal_hourly_input(.SD)[[2]],
-                              c_vol = cal_hourly_input(.SD)[[1]]), by=list(SUBJECT_ID, HADM_ID,
-                                   ICUSTAY_ID,rid)]
+                                           c_vol = cal_hourly_input(.SD)[[1]]), by=list(SUBJECT_ID, HADM_ID,
+                                                                                        ICUSTAY_ID,rid)]
 
 tmp2 <- hourly_input_cv
 
 hourly_input_cv <- unique(tmp2[,list(tot_vol = sum(c_vol,na.rm=TRUE)), by = list(SUBJECT_ID, HADM_ID,
-                                   ICUSTAY_ID,c_time)],by=NULL)
+                                                                                 ICUSTAY_ID,c_time)],by=NULL)
 
 tmp3 <- hourly_input_cv[,3:5,with=FALSE]
 all_times <- seq(0, max(tmp3$c_time), by =1)  
@@ -177,7 +172,7 @@ setkey(tmp3,ICUSTAY_ID,c_time)
 tmp4 <- tmp3[CJ(ids,all_times), roll = TRUE] # cross join the ICUSTAY_ID and sequence of timings that we needed to impute for hours without record.
 
 hourly_input_cv <- merge(tmp4[c_time<=72], unique(tmp2[,c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'), with = FALSE],by=NULL), by = c('ICUSTAY_ID'), 
-                    all.x=TRUE,all.y=FALSE,allow.cartesian = FALSE)
+                         all.x=TRUE,all.y=FALSE,allow.cartesian = FALSE)
 savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
 write.table(hourly_input_cv, paste0(savedir,'hourly_input_cv.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
@@ -195,63 +190,63 @@ table(tmp_mv[AMOUNT<0]$AMOUNTUOM)
 ## For those with St >= End
 ## change timings and amount sign
 Wrong_direction_ids <- which(tmp_mv$timetoadmitSt>tmp_mv$timetoadmitEnd) 
-tmp_mv[Wrong_direction_ids, stime:=timetoadmitEnd]
-tmp_mv[Wrong_direction_ids, etime:=timetoadmitSt]
-tmp_mv[Wrong_direction_ids, timetoadmitSt:=stime]
-tmp_mv[Wrong_direction_ids, timetoadmitEnd:=etime]
-tmp_mv[Wrong_direction_ids, AMOUNT:=(-1)*AMOUNT]
-tmp_mv[,stime:=NULL]
-tmp_mv[,etime:=NULL]
+# tmp_mv[Wrong_direction_ids, stime:=timetoadmitEnd]
+# tmp_mv[Wrong_direction_ids, etime:=timetoadmitSt]
+# tmp_mv[Wrong_direction_ids, timetoadmitSt:=stime]
+# tmp_mv[Wrong_direction_ids, timetoadmitEnd:=etime]
+# tmp_mv[Wrong_direction_ids, AMOUNT:=(-1)*AMOUNT]
+# tmp_mv[,stime:=NULL]
+# tmp_mv[,etime:=NULL]
+tmp_mv <- tmp_mv[-Wrong_direction_ids]
 
-
-tmp <- tmp_mv[tolower(AMOUNTUOM)=='ml']
+tmp <- tmp_mv[tolower(AMOUNTUOM)=='ml'&(match(ITEMID,as.numeric(fb_input_itemid)))]
 ## Remove entries for NA amount
 tmp <- tmp[which(!is.na(AMOUNT))]
 ## Remove entries where start time equal to end time: 483 entries, all with amount being 0
 tmp <- tmp[timetoadmitSt!=timetoadmitEnd]
 
 cal_hourly_input <-function(DT){
-## General formula:
-##  st for starting time
-##  et for ending time
-## then this input contributes to both ceiling(st) and ceiling(et) 
-r_vol <- DT$AMOUNT
-st <- DT$timetoadmitSt
-et <- DT$timetoadmitEnd
-
-## Find the list of hours that can be calculated from this record
-t_seq <- seq(ceiling(st),ceiling(et),by=1)
-
-if(ceiling(st)==st & (st < ceiling(et))){ # if st is already integer hour & st < ceiling(et)
-t_seq <- seq(ceiling(st)+1,ceiling(et),by=1)
-}
-
-if(ceiling(st)==ceiling(et)){ # case 2: if st and et are within the same hour
-t_seq <- ceiling(st)
-}
-n <- length(t_seq)
-## Find the corresponding contributing interval for the hours
-if(n>1){
-t_int_start <- c(st, t_seq[-n]) ## This is only valid when there are at least two hours can be calculated from this record
-t_int_end <- c(t_seq[-n],et)
-}else{
-t_int_start <- st
-t_int_end <- et
-}
-c_vol <- r_vol/(et-st)*(t_int_end - t_int_start)
-c_time <- t_seq
-return(list(c_vol, c_time))
+  ## General formula:
+  ##  st for starting time
+  ##  et for ending time
+  ## then this input contributes to both ceiling(st) and ceiling(et) 
+  r_vol <- DT$AMOUNT
+  st <- DT$timetoadmitSt
+  et <- DT$timetoadmitEnd
+  
+  ## Find the list of hours that can be calculated from this record
+  t_seq <- seq(ceiling(st),ceiling(et),by=1)
+  
+  if(ceiling(st)==st & (st < ceiling(et))){ # if st is already integer hour & st < ceiling(et)
+    t_seq <- seq(ceiling(st)+1,ceiling(et),by=1)
+  }
+  
+  if(ceiling(st)==ceiling(et)){ # case 2: if st and et are within the same hour
+    t_seq <- ceiling(st)
+  }
+  n <- length(t_seq)
+  ## Find the corresponding contributing interval for the hours
+  if(n>1){
+    t_int_start <- c(st, t_seq[-n]) ## This is only valid when there are at least two hours can be calculated from this record
+    t_int_end <- c(t_seq[-n],et)
+  }else{
+    t_int_start <- st
+    t_int_end <- et
+  }
+  c_vol <- r_vol/(et-st)*(t_int_end - t_int_start)
+  c_time <- t_seq
+  return(list(c_vol, c_time))
 }
 
 ## Only use these records that end after admission
 hourly_input_mv <- tmp[timetoadmitEnd>=0, list(c_time = cal_hourly_input(.SD)[[2]],
-                              c_vol = cal_hourly_input(.SD)[[1]]), by=list(SUBJECT_ID, HADM_ID,
-                                   ICUSTAY_ID,ROW_ID)]
+                                               c_vol = cal_hourly_input(.SD)[[1]]), by=list(SUBJECT_ID, HADM_ID,
+                                                                                            ICUSTAY_ID,ROW_ID)]
 
 tmp2 <- hourly_input_mv
 
 hourly_input_mv <- unique(tmp2[,list(tot_vol = sum(c_vol,na.rm=TRUE)), by = list(SUBJECT_ID, HADM_ID,
-                                   ICUSTAY_ID,c_time)],by=NULL)
+                                                                                 ICUSTAY_ID,c_time)],by=NULL)
 
 tmp3 <- hourly_input_mv[,3:5,with=FALSE]
 uall_times <- seq(0, max(tmp3$c_time), by =1)  
@@ -260,24 +255,24 @@ setkey(tmp3,ICUSTAY_ID,c_time)
 tmp4 <- tmp3[CJ(ids,all_times), roll = TRUE] # cross join the ICUSTAY_ID and sequence of timings that we needed to impute for hours without record.
 
 hourly_input_mv <- merge(tmp4[c_time<=72], unique(tmp2[,c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'), with = FALSE],by=NULL), by = c('ICUSTAY_ID'), 
-                    all.x=TRUE,all.y=FALSE,allow.cartesian = FALSE)
+                         all.x=TRUE,all.y=FALSE,allow.cartesian = FALSE)
 savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
 write.table(hourly_input_mv, paste0(savedir,'hourly_input_mv.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
-i
+
 
 ## For output
-tmp <- tmp_op[tolower(VALUEUOM)=='ml']
-u## 36417 entries with VALUEUOM being empty space have VALUE = 0
+tmp <- tmp_op[tolower(VALUEUOM)=='ml'&(match(ITEMID,as.numeric(fb_output_itemid)))]
+## 36417 entries with VALUEUOM being empty space have VALUE = 0
 
 ## Remove entries for NA amount: 88282 entries
 tmp <- tmp[which(!is.na(VALUE))]
 tmp2 <- tmp[timetoadmit>=0, list(c_time=ceiling(timetoadmit),
-                     c_vol = VALUE), by = list(SUBJECT_ID, HADM_ID,
-u                                   ICUSTAY_ID,ROW_ID)]
-                                   
+                                 c_vol = VALUE), by = list(SUBJECT_ID, HADM_ID,
+                                                                                              ICUSTAY_ID,ROW_ID)]
+
 hourly_output <- unique(tmp2[,list(tot_vol = sum(c_vol,na.rm=TRUE)), by = list(SUBJECT_ID, HADM_ID,
-                                   ICUSTAY_ID,c_time)],by=NULL)
+                                                                               ICUSTAY_ID,c_time)],by=NULL)
 
 tmp3 <- hourly_output[,3:5,with=FALSE]
 all_times <- seq(0, max(tmp3$c_time), by =1)  
@@ -286,431 +281,79 @@ setkey(tmp3,ICUSTAY_ID,c_time)
 tmp4 <- tmp3[CJ(ids,all_times), roll = TRUE]# cross join the ICUSTAY_ID and sequence of timings that we needed to impute for hours without record.
 
 hourly_output <- merge(tmp4[c_time<=72], unique(tmp2[,c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'), with = FALSE],by=NULL), by = c('ICUSTAY_ID'), 
-                    all.x=TRUE,all.y=FALSE,allow.cartesian = FALSE)
+                       all.x=TRUE,all.y=FALSE,allow.cartesian = FALSE)
 savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
-uwrite.table(hourly_output, paste0(savedir,'hourly_output.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
-
-
-## 
-
-files <- dir('D:)
-## Fluid balance table algorithm:
-##  1.	Convert L to mL.
-##  2.	Adjust timing with respect to admission time
-##  3.	For input, attribute the volume hourly, Fluid input record A starting at time t1 and end at time t2. Have the following situations, examples:
-##      a.	3.5hr to 4.7hr: 3.5 to 4 contribute to fb at 4hrs; 4-4.7 contribute to fb at 5hrs. Uniformly. For this case, if starting time is 3hr, then 3 to 4 will still contribute to fb at 4hrs but no contribution to fb at 3 hrs.
-##      b.	3.5hr to 3.7hr:  3.5 to 3.7 contribute to fb at 4hrs
-##  4.	For output, attribute the volume hourly, fluid output record B at time t3
-##      a.	3.4hr, all volume will be calculated towards fb at 4hrs.
-##  5.	Then with that, we could calculate each hourly input and output, and hourly net fluid balance.
-
-rm(list=ls())
-library(data.table)
-setwd('D:/Sepsis project')
-files <- dir('data_mimic', recursive = TRUE, full.names = TRUE)
-
-input_cv <- fread(files[grep('INPUTEVENTS_CV.csv',files)])
-input_mv <- fread(files[grep('INPUTEVENTS_MV.csv',files)])
-d_items <- fread(files[grep('D_ITEMS.csv',files)])#12
-output_both <- fread(files[grep('OUTPUTEVENTS.csv',files)])
-admit <- fread(files[grep('ADMISSIONS.csv',files)])
-icustays <- fread(files[grep('ICUSTAYS.csv',files)])
-
-##icu admission table
-icustays[, intime:=as.POSIXct(strptime(INTIME, "%Y-%m-%d %H:%M:%S"))]
-icustays[, outtime:=as.POSIXct(strptime(OUTTIME, "%Y-%m-%d %H:%M:%S"))]
-
-## extract DBSOURCE
-dbsource <- icustays[, c('SUBJECT_ID','HADM_ID','ICUSTAY_ID','DBSOURCE')]
-bothicu <- icustays[DBSOURCE=='both']$ICUSTAY_ID
-savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
-write.table(dbsource, paste0(savedir,'dbsource.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
-
-
-
-
-##Join item labels with the input and output table
-join_tables_cv <- unique(merge(d_items[,c('ITEMID','LABEL'), with = FALSE], input_cv, by = c('ITEMID')), by = NULL)
-join_tables_mv <- unique(merge(d_items[,c('ITEMID','LABEL'), with = FALSE], input_mv, by = c('ITEMID')), by = NULL)
-join_tables_op <- unique(merge(d_items[,c('ITEMID','LABEL'), with = FALSE], output_both, by = c('ITEMID')), by = NULL)
-
-## format time
-join_tables_cv[, charttime:=as.POSIXct(strptime(CHARTTIME, "%Y-%m-%d %H:%M:%S"))]
-join_tables_mv[, starttime:=as.POSIXct(strptime(STARTTIME, "%Y-%m-%d %H:%M:%S"))]
-join_tables_mv[, endtime:=as.POSIXct(strptime(ENDTIME, "%Y-%m-%d %H:%M:%S"))]
-join_tables_op[, charttime:=as.POSIXct(strptime(CHARTTIME, "%Y-%m-%d %H:%M:%S"))]
-
-
-## Step 1: For both input and output, adjust timing with respect to admit time
-icuids <- icustays$ICUSTAY_ID
-tmp_cv <- merge(icustays[,c('ICUSTAY_ID','intime'), with = FALSE],join_tables_cv,by = c('ICUSTAY_ID'), all.x = FALSE, all.y = FALSE)
-tmp_cv[, timetoadmit := as.numeric(difftime(charttime,intime,units = 'hours'))]
-
-tmp_mv <- merge(icustays[,c('ICUSTAY_ID','intime'), with = FALSE],join_tables_mv,by = c('ICUSTAY_ID'), all.x = FALSE, all.y = FALSE)
-tmp_mv[, timetoadmitSt := as.numeric(difftime(starttime,intime,units = 'hours'))]
-tmp_mv[, timetoadmitEnd := as.numeric(difftime(endtime,intime,units = 'hours'))]
-
-tmp_op <- merge(icustays[,c('ICUSTAY_ID','intime'), with = FALSE],join_tables_op,by = c('ICUSTAY_ID'), all.x = FALSE, all.y = FALSE)
-tmp_op[, timetoadmit := as.numeric(difftime(charttime,intime,units = 'hours'))]
-
-## Check data
-summary(tmp_cv)
-## Exists records where charttime is before admission time
-summary(tmp_mv)
-## Exists records where charttime is before admission time
-## Exists records where fluid amount being negative
-summary(tmp_op)
-## Exists records where charttime is before admission time
-## Exists records where fluid amount being negative
-
-## Step 2: To calculate hourly input and output
-## Idea is such that for each recorded volume, find the starting time and ending time. 
-## For example, drug A has a sequence of recording at different timings,
-
-## Then calculate the volume of this drug A at hours that before and after the recording timings
-
-
-## CareVue
-tmp <- tmp_cv[tolower(AMOUNTUOM)=='ml']
-## Remove entries for NA amount
-tmp <- tmp[which(!is.na(AMOUNT))]
-## Check if there is duplicated records at the same timing for the same item, same linkorderid but different orders
-check_duplicates <- unique(tmp[,list(count=.N), by = list(SUBJECT_ID,HADM_ID,ICUSTAY_ID,ITEMID,LINKORDERID,timetoadmit)],by=NULL)
-
-## If yes, sum records at the same timing 
-tmp2 <- unique(tmp[, list(amount=sum(AMOUNT),
-                          NEWBOTTLE = unique(NEWBOTTLE)), by = list(SUBJECT_ID,HADM_ID,ICUSTAY_ID,ITEMID,LINKORDERID,timetoadmit)],by=NULL)
-
-tmp <- tmp2
-
-## If there are multiple bottles, need to differentiate between bottles.
-## Define serial id for bottles
-findsid <- function(DT){ 
-newbottle <- DT$NEWBOTTLE
-newbottle[which(is.na(newbottle))] <- 0
-newbottle[DT$STOPPED=='Restart'] <- 1
-sid <- cumsum(newbottle)
-return(sid)
-}
-
-## Function to find start time 
-## for the first record, the starting time will be one hour ago.
-## for other records, the starting time will be the previous timing.
-findsttime <- function(DT){
-timings <- DT$timetoadmit
-output <- c(ifelse(timings[1]-1<0,0,timings[1]-1), timings[-length(timings)])
-return(output)
-}
-setkey(tmp,SUBJECT_ID,HADM_ID,ICUSTAY_ID,ITEMID,LINKORDERID,timetoadmit)
-tmp[, sid := findsid(.SD),by = list(SUBJECT_ID, HADM_ID,
-                                   ICUSTAY_ID,ITEMID,LINKORDERID)]
-
-
-tmp[,sttime := findsttime(.SD),by = list(SUBJECT_ID, HADM_ID,
-                                   ICUSTAY_ID,ITEMID,LINKORDERID,sid)]
-
-## With both starting time and ending time, hourly input can be calculated
-cal_hourly_input <-function(DT){
-## General formula:
-##  st for starting time
-##  et for ending time
-## then this input contributes to both ceiling(st) and ceiling(et) 
-r_vol <- DT$amount
-st <- DT$sttime
-et <- DT$timetoadmit
-
-## Find the list of hours that can be calculated from this record
-t_seq <- seq(ceiling(st),ceiling(et),by=1)
-
-if(ceiling(st)==st & (st < ceiling(et))){ # if st is already integer hour & st < ceiling(et)
-t_seq <- seq(ceiling(st)+1,ceiling(et),by=1)
-}
-
-if(ceiling(st)==ceiling(et)){ # case 2: if st and et are within the same hour
-t_seq <- ceiling(st)
-}
-n <- length(t_seq)
-
-## Find the corresponding contributing interval for the hours
-if(n>1){
-t_int_start <- c(st, t_seq[-n]) ## This is only valid when there are at least two hours can be calculated from this record
-t_int_end <- c(t_seq[-n],et)
-}else{
-t_int_start <- st
-t_int_end <- et
-}
-c_vol <- r_vol/(et-st)*(t_int_end - t_int_start)
-c_time <- t_seq
-return(list(c_vol, c_time))
-}
-rids <- 1:nrow(tmp)
-tmp$rid <- rids # give each row a id 
-hourly_input_cv <- tmp[timetoadmit>0, list(c_time = cal_hourly_input(.SD)[[2]],
-                              c_vol = cal_hourly_input(.SD)[[1]]), by=list(SUBJECT_ID, HADM_ID,
-                                   ICUSTAY_ID,rid)] # calculate the contributing input for each row
-
-tmp2 <- hourly_input_cv
-
-hourly_input_cv <- unique(tmp2[,list(tot_vol = sum(c_vol,na.rm=TRUE)), by = list(SUBJECT_ID, HADM_ID,
-                                   ICUSTAY_ID,c_time)],by=NULL)
-## Remove those records with NA hadm id or NA subject id or NA ICUSTAY_ID
-hourly_input_cv <- hourly_input_cv[!is.na(SUBJECT_ID)&(!is.na(HADM_ID))&(!is.na(ICUSTAY_ID))]
-
-tmp3 <- hourly_input_cv[,1:5,with=FALSE]
-all_times <- seq(0, max(tmp3$c_time), by =1)  
-tmp4 <- tmp3
-tmp4[, newid:=paste(SUBJECT_ID,HADM_ID,ICUSTAY_ID,sep='.')]
-ids <- unique(tmp4$newid)
-tmp4 <- tmp4[, c('newid','c_time','tot_vol'),with=FALSE]
-setkey(tmp4,newid,c_time)
-tmp5 <- tmp4[CJ(ids,all_times[1:73]), roll = TRUE] # cross join the ICUSTAY_ID and sequence of timings that we needed to impute for hours without record.
-hourly_input_cv <- tmp5
-hourly_input_cv[, SUBJECT_ID:=unlist(strsplit(newid,'\\.'))[1], by = newid]
-hourly_input_cv[, HADM_ID:=unlist(strsplit(newid,'\\.'))[2], by = newid]
-hourly_input_cv[, ICUSTAY_ID:=unlist(strsplit(newid,'\\.'))[3], by = newid]
-hourly_input_cv[, newid:=NULL]
-savedir <- ''
-write.table(hourly_input_cv, paste0(savedir,'hourly_input_cv.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
-
-
-
-## For mv input, some modifications need to be changed before calculation
-## Need to change L to ml
-Lid <- which(tolower(tmp_mv$AMOUNTUOM)=='l') 
-tmp_mv[Lid, AMOUNT:=AMOUNT*1000]
-tmp_mv[Lid, AMOUNTUOM:='ml']
-
-## Need to check the records with negative values
-table(tmp_mv[AMOUNT<0]$AMOUNTUOM)
-
-## For those with St >= End
-## change timings and amount sign
-Wrong_direction_ids <- which(tmp_mv$timetoadmitSt>tmp_mv$timetoadmitEnd) 
-tmp_mv[Wrong_direction_ids, stime:=timetoadmitEnd]
-tmp_mv[Wrong_direction_ids, etime:=timetoadmitSt]
-tmp_mv[Wrong_direction_ids, timetoadmitSt:=stime]
-tmp_mv[Wrong_direction_ids, timetoadmitEnd:=etime]
-tmp_mv[Wrong_direction_ids, AMOUNT:=(-1)*AMOUNT]
-tmp_mv[,stime:=NULL]
-tmp_mv[,etime:=NULL]
-
-
-tmp <- tmp_mv[tolower(AMOUNTUOM)=='ml']
-## Remove entries for NA amount
-tmp <- tmp[which(!is.na(AMOUNT))]
-## Remove entries where start time equal to end time: 483 entries, all with amount being 0
-tmp <- tmp[timetoadmitSt!=timetoadmitEnd]
-
-cal_hourly_input <-function(DT){
-## General formula:
-##  st for starting time
-##  et for ending time
-## then this input contributes to both ceiling(st) and ceiling(et) 
-r_vol <- DT$AMOUNT
-st <- DT$timetoadmitSt
-et <- DT$timetoadmitEnd
-
-## Find the list of hours that can be calculated from this record
-t_seq <- seq(ceiling(st),ceiling(et),by=1)
-
-if(ceiling(st)==st & (st < ceiling(et))){ # if st is already integer hour & st < ceiling(et)
-t_seq <- seq(ceiling(st)+1,ceiling(et),by=1)
-}
-
-if(ceiling(st)==ceiling(et)){ # case 2: if st and et are within the same hour
-t_seq <- ceiling(st)
-}
-n <- length(t_seq)
-## Find the corresponding contributing interval for the hours
-if(n>1){
-t_int_start <- c(st, t_seq[-n]) ## This is only valid when there are at least two hours can be calculated from this record
-t_int_end <- c(t_seq[-n],et)
-}else{
-t_int_start <- st
-t_int_end <- et
-}
-c_vol <- r_vol/(et-st)*(t_int_end - t_int_start)
-c_time <- t_seq
-return(list(c_vol, c_time))
-}
-
-## Only use these records that end after admission
-hourly_input_mv <- tmp[timetoadmitEnd>=0, list(c_time = cal_hourly_input(.SD)[[2]],
-                              c_vol = cal_hourly_input(.SD)[[1]]), by=list(SUBJECT_ID, HADM_ID,
-                                   ICUSTAY_ID,ROW_ID)]
-
-tmp2 <- hourly_input_mv
-
-hourly_input_mv <- unique(tmp2[,list(tot_vol = sum(c_vol,na.rm=TRUE)), by = list(SUBJECT_ID, HADM_ID,
-                                   ICUSTAY_ID,c_time)],by=NULL)
-
-tmp3 <- hourly_input_mv[,1:5,with=FALSE]
-all_times <- seq(0, max(tmp3$c_time), by =1)  
-tmp4 <- tmp3
-tmp4[, newid:=paste(SUBJECT_ID,HADM_ID,ICUSTAY_ID,sep='.')]
-ids <- unique(tmp4$newid)
-tmp4 <- tmp4[, c('newid','c_time','tot_vol'),with=FALSE]
-setkey(tmp4,newid,c_time)
-tmp5 <- tmp4[CJ(ids,all_times[1:73]), roll = TRUE] # cross join the ICUSTAY_ID and sequence of timings that we needed to impute for hours without record.
-hourly_input_mv <- tmp5
-hourly_input_mv[, SUBJECT_ID:=unlist(strsplit(newid,'\\.'))[1], by = newid]
-hourly_input_mv[, HADM_ID:=unlist(strsplit(newid,'\\.'))[2], by = newid]
-hourly_input_mv[, ICUSTAY_ID:=unlist(strsplit(newid,'\\.'))[3], by = newid]
-hourly_input_mv[, newid:=NULL]
-savedir <- ''
-write.table(hourly_input_mv, paste0(savedir,'hourly_input_mv.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
-
-
-
-## For output
-tmp <- tmp_op[tolower(VALUEUOM)=='ml']
-## 36417 entries with VALUEUOM being empty space have VALUE = 0
-
-## Remove entries for NA amount: 88282 entries
-tmp <- tmp[which(!is.na(VALUE))]
-tmp2 <- tmp[timetoadmit>=0, list(c_time=ceiling(timetoadmit),
-                     c_vol = VALUE), by = list(SUBJECT_ID, HADM_ID,                                   ICUSTAY_ID,ROW_ID)]
-                                   
-hourly_output <- unique(tmp2[,list(tot_vol = sum(c_vol,na.rm=TRUE)), by = list(SUBJECT_ID, HADM_ID,
-                                   ICUSTAY_ID,c_time)],by=NULL)
-
-tmp3 <- hourly_output[,1:5,with=FALSE]
-all_times <- seq(0, max(tmp3$c_time), by =1)  
-tmp4 <- tmp3
-tmp4[, newid:=paste(SUBJECT_ID,HADM_ID,ICUSTAY_ID,sep='.')]
-ids <- unique(tmp4$newid)
-tmp4 <- tmp4[, c('newid','c_time','tot_vol'),with=FALSE]
-setkey(tmp4,newid,c_time)
-tmp5 <- tmp4[CJ(ids,all_times[1:73]), roll = TRUE] # cross join the ICUSTAY_ID and sequence of timings that we needed to impute for hours without record.
-hourly_output <- tmp5
-hourly_output[, SUBJECT_ID:=unlist(strsplit(newid,'\\.'))[1], by = newid]
-hourly_output[, HADM_ID:=unlist(strsplit(newid,'\\.'))[2], by = newid]
-hourly_output[, ICUSTAY_ID:=unlist(strsplit(newid,'\\.'))[3], by = newid]
-hourly_output[, newid:=NULL]
-savedir <- ''
 write.table(hourly_output, paste0(savedir,'hourly_output.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
 
 ## 
-files <- dir('C:/Users/chenying/Downloads/Sepsis working folder/Sepsis working folder/data', full.names =TRUE)
-files <- files[grep('hourly',files)]
-data <- lapply(files,function(file){
-data <- fread(file)
-data
-})
 
-## Compare the similarity between the two systems
-cv <- data[[1]]
-mv <- data[[2]]
-setkey(cv,SUBJECT_ID,HADM_ID,ICUSTAY_ID)
-setkey(mv,SUBJECT_ID,HADM_ID,ICUSTAY_ID)
-cv[ICUSTAY_ID %in% bothicu]   mv[ICUSTAY_ID %in% bothicu]
-## Example: ICUSTAY_ID 260665, 64 hour input, cv reported 65 ml, mv reported 1680 ml
+         
+             
+             
+             ## 
+             files <- dir('/Users/llc/Documents/Sepsis working folder/data', full.names =TRUE)
+             files <- files[grep('hourly',files)]
+             data <- lapply(files,function(file){
+             data <- fread(file)
+             data
+             })
+             
+             ## Compare the similarity between the two systems
+             cv <- data[[1]]
+             mv <- data[[2]]
+             setkey(cv,SUBJECT_ID,HADM_ID,ICUSTAY_ID)
+             setkey(mv,SUBJECT_ID,HADM_ID,ICUSTAY_ID)
+             cv[ICUSTAY_ID %in% bothicu]   mv[ICUSTAY_ID %in% bothicu]
+             ## Example: ICUSTAY_ID 260665, 64 hour input, cv reported 65 ml, mv reported 1680 ml
+             
+             
+             
+             
+             ## Remove those icustays recorded in both systems for system transferring
+             ## Using database source to define ICUSTAYS in both systems is not accurate
+             bothicu <- unique(c(icustays[DBSOURCE=='both']$ICUSTAY_ID,intersect(unique(cv$ICUSTAY_ID), unique(mv$ICUSTAY_ID))))
+             input <- do.call('rbind',list(cv[!(ICUSTAY_ID %in% bothicu)],mv[!(ICUSTAY_ID %in% bothicu)])) # 56956
+             ## merge input with dbsource
+             input$ICUSTAY_ID <- as.numeric(input$ICUSTAY_ID)
+             input$SUBJECT_ID <- as.numeric(input$SUBJECT_ID)
+             input$HADM_ID <- as.numeric(input$HADM_ID)
+             tmp <- merge(dbsource,input,by = c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'),all.x=FALSE,all.y=FALSE)
+             input <- tmp
+             setnames(input,'tot_vol','input_vol')
+             output <- data[[3]] # 54752
+             setnames(output,'tot_vol','output_vol')
+             output$ICUSTAY_ID <- as.numeric(output$ICUSTAY_ID)
+             output$SUBJECT_ID <- as.numeric(output$SUBJECT_ID)
+             output$HADM_ID <- as.numeric(output$HADM_ID)
+             length(intersect(unique(input$ICUSTAY_ID),unique(output$ICUSTAY_ID))) 
+             # 54443 ICUSTAYs have both input and output recorded
+             all_merged <- merge(input, output, by = c('SUBJECT_ID', 'HADM_ID',
+             'ICUSTAY_ID','c_time'), all = FALSE)
+             ## set NA values to 0
+             iNA <- which(is.na(all_merged$input_vol))
+             oNA <- which(is.na(all_merged$output_vol))
+             all_merged[iNA, input_vol:=0]
+             all_merged[oNA, output_vol:=0]
+             
+             ## calculate hourly fb and cumulative fb
+             all_merged[, fb:=(input_vol-output_vol)]
+             setkey(all_merged, SUBJECT_ID, HADM_ID, ICUSTAY_ID, c_time)
+             all_merged[, cumfb:=cumsum(fb), by = list(SUBJECT_ID, HADM_ID, ICUSTAY_ID)]
+             savedir <- '/Users/llc/Documents/Sepsis working folder/data'
+             write.table(all_merged, paste0(savedir,'fb_table.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+             
+             ## final table
+             final_wide <- unique(all_merged[, list(fb3hr=.SD[c_time==3]$cumfb,
+             fb12hr=.SD[c_time==12]$cumfb,
+             fb24hr=.SD[c_time==24]$cumfb,
+             fb48hr=.SD[c_time==48]$cumfb,
+             fb72hr=.SD[c_time==72]$cumfb), by = list(SUBJECT_ID, HADM_ID, ICUSTAY_ID)],by=NULL)
+             
+             #savedir <- ''
+             write.table(final_wide, paste0(savedir,'final_fb_wide.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+             final_long <-all_merged[c_time %in% c(3,12,24,48,72)]
+             #savedir <- ''
+             write.table(final_long, paste0(savedir,'final_fb_long.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+             
 
-
-
-
-## Remove those icustays recorded in both systems for system transferring
-## Using database source to define ICUSTAYS in both systems is not accurate
-bothicu <- unique(c(icustays[DBSOURCE=='both']$ICUSTAY_ID,intersect(unique(cv$ICUSTAY_ID), unique(mv$ICUSTAY_ID))))
-input <- do.call('rbind',list(cv[!(ICUSTAY_ID %in% bothicu)],mv[!(ICUSTAY_ID %in% bothicu)])) # 56956
-## merge input with dbsource
-input$ICUSTAY_ID <- as.numeric(input$ICUSTAY_ID)
-input$SUBJECT_ID <- as.numeric(input$SUBJECT_ID)
-input$HADM_ID <- as.numeric(input$HADM_ID)
-tmp <- merge(dbsource,input,by = c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'),all.x=FALSE,all.y=FALSE)
-input <- tmp
-setnames(input,'tot_vol','input_vol')
-output <- data[[3]] # 54752
-setnames(output,'tot_vol','output_vol')
-output$ICUSTAY_ID <- as.numeric(output$ICUSTAY_ID)
-output$SUBJECT_ID <- as.numeric(output$SUBJECT_ID)
-output$HADM_ID <- as.numeric(output$HADM_ID)
-length(intersect(unique(input$ICUSTAY_ID),unique(output$ICUSTAY_ID))) 
-# 54443 ICUSTAYs have both input and output recorded
-all_merged <- merge(input, output, by = c('SUBJECT_ID', 'HADM_ID',
-                                   'ICUSTAY_ID','c_time'), all = FALSE)
-## set NA values to 0
-iNA <- which(is.na(all_merged$input_vol))
-oNA <- which(is.na(all_merged$output_vol))
-all_merged[iNA, input_vol:=0]
-all_merged[oNA, output_vol:=0]
-
-## calculate hourly fb and cumulative fb
-all_merged[, fb:=(input_vol-output_vol)]
-setkey(all_merged, SUBJECT_ID, HADM_ID, ICUSTAY_ID, c_time)
-all_merged[, cumfb:=cumsum(fb), by = list(SUBJECT_ID, HADM_ID, ICUSTAY_ID)]
-savedir <- ''
-write.table(all_merged, paste0(savedir,'fb_table.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
-
-## final table
-final_wide <- unique(all_merged[, list(fb3hr=.SD[c_time==3]$cumfb,
-                           fb12hr=.SD[c_time==12]$cumfb,
-                           fb24hr=.SD[c_time==24]$cumfb,
-                           fb48hr=.SD[c_time==48]$cumfb,
-                           fb72hr=.SD[c_time==72]$cumfb), by = list(SUBJECT_ID, HADM_ID, ICUSTAY_ID)],by=NULL)
-                           
-savedir <- ''
-write.table(final_wide, paste0(savedir,'final_fb_wide.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
-final_long <-all_merged[c_time %in% c(3,12,24,48,72)]
-savedir <- ''
-write.table(final_long, paste0(savedir,'final_fb_long.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
-files <- dir('/Users/llc/Documents/Sepsis working folder/data/', full.names =TRUE)
-ufiles <- files[grep('hourly',files)]
-data <- lapply(files,function(file){
-data <- fread(file)
-data
-})
-
-## Compare the similarity between the two systems
-cv <- data[[1]]
-mv <- data[[2]]
-setkey(cv,SUBJECT_ID,HADM_ID,ICUSTAY_ID)
-setkey(mv,SUBJECT_ID,HADM_ID,ICUSTAY_ID)
-cv[ICUSTAY_ID %in% bothicu]   mv[ICUSTAY_ID %in% bothicu]
-## ICUSTAY_ID: 260665, 64 hour input, cv report 65, mv report 1680
-
-
-
-## If there are same ICUSTAYID recorded in both systems, using careVue 
-## remove those icustays recorded in both systems for system transferring
-## Using database source to define ICUSTAYS in both systems is not accurate
-bothicu <- unique(icustays[DBSOURCE=='both']$ICUSTAY_ID,intersect(unique(cv$ICUSTAY_ID), unique(mv$ICUSTAY_ID)))
-input <- do.call('rbind',list(cv[!(ICUSTAY_ID %in% bothicu)],mv[!(ICUSTAY_ID %in% bothicu)])) # 56956
-## merge input with dbsource
-tmp <- merge(dbsource,input,by = c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'),all.x=FALSE,all.y=FALSE)
-input <- tmp
-setnames(input,'tot_vol','input_vol')
-output <- data[[3]] # 54752
-setnames(output,'tot_vol','output_vol')
-length(intersect(unique(input$ICUSTAY_ID),unique(output$ICUSTAY_ID))) 
-# 54443 ICUSTAYs have both input and output recorded
-all_merged <- merge(input, output, by = c('SUBJECT_ID', 'HADM_ID',
-                                   'ICUSTAY_ID','c_time'), all = FALSE)
-## set NA values to 0
-iNA <- which(is.na(all_merged$input_vol))
-oNA <- which(is.na(all_merged$output_vol))
-all_merged[iNA, input_vol:=0]
-all_merged[oNA, output_vol:=0]
-
-## calculate hourly fb and cumulative fb
-all_merged[, fb:=(input_vol-output_vol)]
-setkey(all_merged, SUBJECT_ID, HADM_ID, ICUSTAY_ID, c_time)
-all_merged[, cumfb:=cumsum(fb), by = list(SUBJECT_ID, HADM_ID, ICUSTAY_ID)]
-savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
-savedir <- 'C:/Users/chenying/Downloads/Sepsis working folder/Sepsis working folder/data'
-write.table(all_merged, paste0(savedir,'fb_table.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
-
-## final table
-
-final_wide <- unique(all_merged[, list(fb3hr=.SD[c_time==3]$cumfb,
-                           fb12hr=.SD[c_time==12]$cumfb,
-                           fb24hr=.SD[c_time==24]$cumfb,
-                           fb48hr=.SD[c_time==48]$cumfb,
-                           fb72hr=.SD[c_time==72]$cumfb), by = list(SUBJECT_ID, HADM_ID, ICUSTAY_ID)],by=NULL)
-                           
-savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
-write.table(final_wide, paste0(savedir,'final_fb_wide.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
-final_long <-all_merged[c_time %in% c(3,12,24,48,72)]
-savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
-write.table(final_long, paste0(savedir,'final_fb_long.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
