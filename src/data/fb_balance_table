@@ -12,9 +12,9 @@ output_both <- fread(files[grep('OUTPUTEVENTS.csv',files)])
 admit <- fread(files[grep('ADMISSIONS.csv',files)])
 icustays <- fread(files[grep('ICUSTAYS.csv',files)])
 fb_itemid <- read_xlsx('/Users/llc/Desktop/Reference table MIMIC-III Komorowski 090117.xlsx',sheet = 1, skip = 71, col_names=FALSE)
-fb_output_itemid <- setdiff(unique(unlist(fb_itemid[1:2,2:10])),NA)
-fb_input_itemid <- c(setdiff(unique(unlist(fb_itemid[c(6:38,40),3:10])),c(NA,'-')),
-                     setdiff(unique(unlist(fb_itemid[c(43:54),2:10])),c(NA,'-')))
+fb_output_itemid <- setdiff(unique(unlist(fb_itemid[1:2,2:25])),NA)
+fb_input_itemid <- c(setdiff(unique(unlist(fb_itemid[c(6:38,40),3:25])),c(NA,'-')),
+                     setdiff(unique(unlist(fb_itemid[c(43:54),2:25])),c(NA,'-')))
 ##icu admission table
 icustays[, intime:=as.POSIXct(strptime(INTIME, "%Y-%m-%d %H:%M:%S"))]
 icustays[, outtime:=as.POSIXct(strptime(OUTTIME, "%Y-%m-%d %H:%M:%S"))]
@@ -156,31 +156,38 @@ cal_hourly_input <-function(DT){
 }
 rids <- 1:nrow(tmp)
 tmp$rid <- rids
-hourly_input_cv <- tmp[timetoadmit>0, list(c_time = cal_hourly_input(.SD)[[2]],
-                                           c_vol = cal_hourly_input(.SD)[[1]]), by=list(SUBJECT_ID, HADM_ID,
-                                                                                        ICUSTAY_ID,rid)]
+hourly_input_cv <- tmp[timetoadmit>=0, list(c_time = cal_hourly_input(.SD)[[2]],
+c_vol = cal_hourly_input(.SD)[[1]]), by=list(SUBJECT_ID, HADM_ID,
+ICUSTAY_ID,rid)] # calculate the contributing input for each row
 
 tmp2 <- hourly_input_cv
 
 hourly_input_cv <- unique(tmp2[,list(tot_vol = sum(c_vol,na.rm=TRUE)), by = list(SUBJECT_ID, HADM_ID,
-                                                                                 ICUSTAY_ID,c_time)],by=NULL)
+ICUSTAY_ID,c_time)],by=NULL)
+## Remove those records with NA hadm id or NA subject id or NA ICUSTAY_ID
+hourly_input_cv <- hourly_input_cv[!is.na(SUBJECT_ID)&(!is.na(HADM_ID))&(!is.na(ICUSTAY_ID))]
 
-tmp3 <- hourly_input_cv[,3:5,with=FALSE]
-all_times <- seq(0, max(tmp3$c_time), by =1)  
-ids <- unique(tmp3$ICUSTAY_ID)
-setkey(tmp3,ICUSTAY_ID,c_time)
-tmp4 <- tmp3[CJ(ids,all_times), roll = TRUE] # cross join the ICUSTAY_ID and sequence of timings that we needed to impute for hours without record.
-
-hourly_input_cv <- merge(tmp4[c_time<=72], unique(tmp2[,c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'), with = FALSE],by=NULL), by = c('ICUSTAY_ID'), 
-                         all.x=TRUE,all.y=FALSE,allow.cartesian = FALSE)
+tmp3 <- hourly_input_cv[,1:5,with=FALSE]
+all_times <- seq(0, max(tmp3$c_time), by =1)
+tmp4 <- tmp3
+tmp4[, newid:=paste(SUBJECT_ID,HADM_ID,ICUSTAY_ID,sep='.')]
+ids <- unique(tmp4$newid)
+tmp4 <- tmp4[, c('newid','c_time','tot_vol'),with=FALSE]
+setkey(tmp4,newid,c_time)
+tmp5 <- tmp4[CJ(ids,all_times[1:73]), roll = TRUE] # cross join the ICUSTAY_ID and sequence of timings that we needed to impute for hours without record.
+hourly_input_cv <- tmp5
+hourly_input_cv[, SUBJECT_ID:=unlist(strsplit(newid,'\\.'))[1], by = newid]
+hourly_input_cv[, HADM_ID:=unlist(strsplit(newid,'\\.'))[2], by = newid]
+hourly_input_cv[, ICUSTAY_ID:=unlist(strsplit(newid,'\\.'))[3], by = newid]
+hourly_input_cv[, newid:=NULL]
 savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
-write.table(hourly_input_cv, paste0(savedir,'hourly_input_cv.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+write.table(hourly_input_cv, paste0(savedir,'/hourly_input_cv.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
 
 
 ## For mv input, some modifications need to be changed before calculation
 ## Need to change L to ml
-Lid <- which(tolower(tmp_mv$AMOUNTUOM)=='l') 
+Lid <- which(tolower(tmp_mv$AMOUNTUOM)=='l')
 tmp_mv[Lid, AMOUNT:=AMOUNT*1000]
 tmp_mv[Lid, AMOUNTUOM:='ml']
 
@@ -240,120 +247,124 @@ cal_hourly_input <-function(DT){
 
 ## Only use these records that end after admission
 hourly_input_mv <- tmp[timetoadmitEnd>=0, list(c_time = cal_hourly_input(.SD)[[2]],
-                                               c_vol = cal_hourly_input(.SD)[[1]]), by=list(SUBJECT_ID, HADM_ID,
-                                                                                            ICUSTAY_ID,ROW_ID)]
+c_vol = cal_hourly_input(.SD)[[1]]), by=list(SUBJECT_ID, HADM_ID,
+ICUSTAY_ID,ROW_ID)]
 
 tmp2 <- hourly_input_mv
 
 hourly_input_mv <- unique(tmp2[,list(tot_vol = sum(c_vol,na.rm=TRUE)), by = list(SUBJECT_ID, HADM_ID,
-                                                                                 ICUSTAY_ID,c_time)],by=NULL)
+ICUSTAY_ID,c_time)],by=NULL)
 
-tmp3 <- hourly_input_mv[,3:5,with=FALSE]
-uall_times <- seq(0, max(tmp3$c_time), by =1)  
-ids <- unique(tmp3$ICUSTAY_ID)
-setkey(tmp3,ICUSTAY_ID,c_time)
-tmp4 <- tmp3[CJ(ids,all_times), roll = TRUE] # cross join the ICUSTAY_ID and sequence of timings that we needed to impute for hours without record.
-
-hourly_input_mv <- merge(tmp4[c_time<=72], unique(tmp2[,c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'), with = FALSE],by=NULL), by = c('ICUSTAY_ID'), 
-                         all.x=TRUE,all.y=FALSE,allow.cartesian = FALSE)
-savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
-write.table(hourly_input_mv, paste0(savedir,'hourly_input_mv.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+tmp3 <- hourly_input_mv[,1:5,with=FALSE]
+all_times <- seq(0, max(tmp3$c_time), by =1)
+tmp4 <- tmp3
+tmp4[, newid:=paste(SUBJECT_ID,HADM_ID,ICUSTAY_ID,sep='.')]
+ids <- unique(tmp4$newid)
+tmp4 <- tmp4[, c('newid','c_time','tot_vol'),with=FALSE]
+setkey(tmp4,newid,c_time)
+tmp5 <- tmp4[CJ(ids,all_times[1:73]), roll = TRUE] # cross join the ICUSTAY_ID and sequence of timings that we needed to impute for hours without record.
+hourly_input_mv <- tmp5
+hourly_input_mv[, SUBJECT_ID:=unlist(strsplit(newid,'\\.'))[1], by = newid]
+hourly_input_mv[, HADM_ID:=unlist(strsplit(newid,'\\.'))[2], by = newid]
+hourly_input_mv[, ICUSTAY_ID:=unlist(strsplit(newid,'\\.'))[3], by = newid]
+hourly_input_mv[, newid:=NULL]
+#savedir <- ''
+write.table(hourly_input_mv, paste0(savedir,'/hourly_input_mv.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
 
 
 ## For output
-tmp <- tmp_op[tolower(VALUEUOM)=='ml'&(match(ITEMID,as.numeric(fb_output_itemid)))]
+tmp <- tmp_op[tolower(VALUEUOM)=='ml']
 ## 36417 entries with VALUEUOM being empty space have VALUE = 0
 
 ## Remove entries for NA amount: 88282 entries
 tmp <- tmp[which(!is.na(VALUE))]
 tmp2 <- tmp[timetoadmit>=0, list(c_time=ceiling(timetoadmit),
-                                 c_vol = VALUE), by = list(SUBJECT_ID, HADM_ID,
-                                                                                              ICUSTAY_ID,ROW_ID)]
+c_vol = VALUE), by = list(SUBJECT_ID, HADM_ID,                                   ICUSTAY_ID,ROW_ID)]
 
 hourly_output <- unique(tmp2[,list(tot_vol = sum(c_vol,na.rm=TRUE)), by = list(SUBJECT_ID, HADM_ID,
-                                                                               ICUSTAY_ID,c_time)],by=NULL)
+ICUSTAY_ID,c_time)],by=NULL)
 
-tmp3 <- hourly_output[,3:5,with=FALSE]
-all_times <- seq(0, max(tmp3$c_time), by =1)  
-ids <- unique(tmp3$ICUSTAY_ID)
-setkey(tmp3,ICUSTAY_ID,c_time)
-tmp4 <- tmp3[CJ(ids,all_times), roll = TRUE]# cross join the ICUSTAY_ID and sequence of timings that we needed to impute for hours without record.
+tmp3 <- hourly_output[,1:5,with=FALSE]
+all_times <- seq(0, max(tmp3$c_time), by =1)
+tmp4 <- tmp3
+tmp4[, newid:=paste(SUBJECT_ID,HADM_ID,ICUSTAY_ID,sep='.')]
+ids <- unique(tmp4$newid)
+tmp4 <- tmp4[, c('newid','c_time','tot_vol'),with=FALSE]
+setkey(tmp4,newid,c_time)
+tmp5 <- tmp4[CJ(ids,all_times[1:73]), roll = TRUE] # cross join the ICUSTAY_ID and sequence of timings that we needed to impute for hours without record.
+hourly_output <- tmp5
+hourly_output[, SUBJECT_ID:=unlist(strsplit(newid,'\\.'))[1], by = newid]
+hourly_output[, HADM_ID:=unlist(strsplit(newid,'\\.'))[2], by = newid]
+hourly_output[, ICUSTAY_ID:=unlist(strsplit(newid,'\\.'))[3], by = newid]
+hourly_output[, newid:=NULL]
+#savedir <- ''
+write.table(hourly_output, paste0(savedir,'/hourly_output.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
-hourly_output <- merge(tmp4[c_time<=72], unique(tmp2[,c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'), with = FALSE],by=NULL), by = c('ICUSTAY_ID'), 
-                       all.x=TRUE,all.y=FALSE,allow.cartesian = FALSE)
-savedir <- '/Users/llc/Documents/Sepsis working folder/data/'
-write.table(hourly_output, paste0(savedir,'hourly_output.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
 
-## 
+##
+files <- dir(savedir, full.names =TRUE)
+files <- files[grep('hourly',files)]
+data <- lapply(files,function(file){
+    data <- fread(file)
+    data
+})
 
-         
-             
-             
-             ## 
-             files <- dir('/Users/llc/Documents/Sepsis working folder/data', full.names =TRUE)
-             files <- files[grep('hourly',files)]
-             data <- lapply(files,function(file){
-             data <- fread(file)
-             data
-             })
-             
-             ## Compare the similarity between the two systems
-             cv <- data[[1]]
-             mv <- data[[2]]
-             setkey(cv,SUBJECT_ID,HADM_ID,ICUSTAY_ID)
-             setkey(mv,SUBJECT_ID,HADM_ID,ICUSTAY_ID)
-             cv[ICUSTAY_ID %in% bothicu]   mv[ICUSTAY_ID %in% bothicu]
-             ## Example: ICUSTAY_ID 260665, 64 hour input, cv reported 65 ml, mv reported 1680 ml
-             
-             
-             
-             
-             ## Remove those icustays recorded in both systems for system transferring
-             ## Using database source to define ICUSTAYS in both systems is not accurate
-             bothicu <- unique(c(icustays[DBSOURCE=='both']$ICUSTAY_ID,intersect(unique(cv$ICUSTAY_ID), unique(mv$ICUSTAY_ID))))
-             input <- do.call('rbind',list(cv[!(ICUSTAY_ID %in% bothicu)],mv[!(ICUSTAY_ID %in% bothicu)])) # 56956
-             ## merge input with dbsource
-             input$ICUSTAY_ID <- as.numeric(input$ICUSTAY_ID)
-             input$SUBJECT_ID <- as.numeric(input$SUBJECT_ID)
-             input$HADM_ID <- as.numeric(input$HADM_ID)
-             tmp <- merge(dbsource,input,by = c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'),all.x=FALSE,all.y=FALSE)
-             input <- tmp
-             setnames(input,'tot_vol','input_vol')
-             output <- data[[3]] # 54752
-             setnames(output,'tot_vol','output_vol')
-             output$ICUSTAY_ID <- as.numeric(output$ICUSTAY_ID)
-             output$SUBJECT_ID <- as.numeric(output$SUBJECT_ID)
-             output$HADM_ID <- as.numeric(output$HADM_ID)
-             length(intersect(unique(input$ICUSTAY_ID),unique(output$ICUSTAY_ID))) 
-             # 54443 ICUSTAYs have both input and output recorded
-             all_merged <- merge(input, output, by = c('SUBJECT_ID', 'HADM_ID',
-             'ICUSTAY_ID','c_time'), all = FALSE)
-             ## set NA values to 0
-             iNA <- which(is.na(all_merged$input_vol))
-             oNA <- which(is.na(all_merged$output_vol))
-             all_merged[iNA, input_vol:=0]
-             all_merged[oNA, output_vol:=0]
-             
-             ## calculate hourly fb and cumulative fb
-             all_merged[, fb:=(input_vol-output_vol)]
-             setkey(all_merged, SUBJECT_ID, HADM_ID, ICUSTAY_ID, c_time)
-             all_merged[, cumfb:=cumsum(fb), by = list(SUBJECT_ID, HADM_ID, ICUSTAY_ID)]
-             savedir <- '/Users/llc/Documents/Sepsis working folder/data'
-             write.table(all_merged, paste0(savedir,'fb_table.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
-             
-             ## final table
-             final_wide <- unique(all_merged[, list(fb3hr=.SD[c_time==3]$cumfb,
-             fb12hr=.SD[c_time==12]$cumfb,
-             fb24hr=.SD[c_time==24]$cumfb,
-             fb48hr=.SD[c_time==48]$cumfb,
-             fb72hr=.SD[c_time==72]$cumfb), by = list(SUBJECT_ID, HADM_ID, ICUSTAY_ID)],by=NULL)
-             
-             #savedir <- ''
-             write.table(final_wide, paste0(savedir,'final_fb_wide.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
-             final_long <-all_merged[c_time %in% c(3,12,24,48,72)]
-             #savedir <- ''
-             write.table(final_long, paste0(savedir,'final_fb_long.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
-             
+## Compare the similarity between the two systems
+cv <- data[[1]]
+mv <- data[[2]]
+setkey(cv,SUBJECT_ID,HADM_ID,ICUSTAY_ID)
+setkey(mv,SUBJECT_ID,HADM_ID,ICUSTAY_ID)
+cv[ICUSTAY_ID %in% bothicu]   mv[ICUSTAY_ID %in% bothicu]
+## Example: ICUSTAY_ID 260665, 64 hour input, cv reported 65 ml, mv reported 1680 ml
+
+
+
+
+## Remove those icustays recorded in both systems for system transferring
+## Using database source to define ICUSTAYS in both systems is not accurate
+bothicu <- unique(c(icustays[DBSOURCE=='both']$ICUSTAY_ID,intersect(unique(cv$ICUSTAY_ID), unique(mv$ICUSTAY_ID))))
+input <- do.call('rbind',list(cv[!(ICUSTAY_ID %in% bothicu)],mv[!(ICUSTAY_ID %in% bothicu)])) # 56956
+## merge input with dbsource
+input$ICUSTAY_ID <- as.numeric(input$ICUSTAY_ID)
+input$SUBJECT_ID <- as.numeric(input$SUBJECT_ID)
+input$HADM_ID <- as.numeric(input$HADM_ID)
+tmp <- merge(dbsource,input,by = c('SUBJECT_ID','HADM_ID','ICUSTAY_ID'),all.x=FALSE,all.y=FALSE)
+input <- tmp
+setnames(input,'tot_vol','input_vol')
+output <- data[[3]] # 54752
+setnames(output,'tot_vol','output_vol')
+output$ICUSTAY_ID <- as.numeric(output$ICUSTAY_ID)
+output$SUBJECT_ID <- as.numeric(output$SUBJECT_ID)
+output$HADM_ID <- as.numeric(output$HADM_ID)
+length(intersect(unique(input$ICUSTAY_ID),unique(output$ICUSTAY_ID)))
+# 54443 ICUSTAYs have both input and output recorded
+all_merged <- merge(input, output, by = c('SUBJECT_ID', 'HADM_ID',
+'ICUSTAY_ID','c_time'), all = FALSE)
+## set NA values to 0
+iNA <- which(is.na(all_merged$input_vol))
+oNA <- which(is.na(all_merged$output_vol))
+all_merged[iNA, input_vol:=0]
+all_merged[oNA, output_vol:=0]
+
+## calculate hourly fb and cumulative fb
+all_merged[, fb:=(input_vol-output_vol)]
+setkey(all_merged, SUBJECT_ID, HADM_ID, ICUSTAY_ID, c_time)
+all_merged[, cumfb:=cumsum(fb), by = list(SUBJECT_ID, HADM_ID, ICUSTAY_ID)]
+#savedir <- ''
+write.table(all_merged, paste0(savedir,'/fb_table.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+
+## final table
+final_wide <- unique(all_merged[, list(fb3hr=.SD[c_time==3]$cumfb,
+fb12hr=.SD[c_time==12]$cumfb,
+fb24hr=.SD[c_time==24]$cumfb,
+fb48hr=.SD[c_time==48]$cumfb,
+fb72hr=.SD[c_time==72]$cumfb), by = list(SUBJECT_ID, HADM_ID, ICUSTAY_ID)],by=NULL)
+
+#savedir <- ''
+write.table(final_wide, paste0(savedir,'/final_fb_wide.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+final_long <-all_merged[c_time %in% c(3,12,24,48,72)]
+#savedir <- ''
+write.table(final_long, paste0(savedir,'/final_fb_long.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
 
