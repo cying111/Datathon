@@ -274,7 +274,7 @@ write.table(hourly_input_mv, paste0(savedir,'/hourly_input_mv.csv'), sep = ',', 
 
 
 ## For output
-tmp <- tmp_op[tolower(VALUEUOM)=='ml']
+tmp <- tmp_op[tolower(VALUEUOM)=='ml'&(match(ITEMID,as.numeric(fb_output_itemid)))]
 ## 36417 entries with VALUEUOM being empty space have VALUE = 0
 
 ## Remove entries for NA amount: 88282 entries
