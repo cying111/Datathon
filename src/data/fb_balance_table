@@ -364,6 +364,23 @@ fb72hr=.SD[c_time==72]$cumfb), by = list(SUBJECT_ID, HADM_ID, ICUSTAY_ID)],by=NU
 
 #savedir <- ''
 write.table(final_wide, paste0(savedir,'/final_fb_wide.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+
+
+# 6hourly
+final_wide <- unique(data[, list(fb6hr=.SD[c_time==6]$cumfb,
+                                 fb12hr=.SD[c_time==12]$cumfb,
+                                 fb18hr=.SD[c_time==18]$cumfb,
+                                 fb24hr=.SD[c_time==24]$cumfb,
+                                 fb30hr=.SD[c_time==30]$cumfb,
+                                 fb36hr=.SD[c_time==36]$cumfb,
+                                 fb42hr=.SD[c_time==42]$cumfb,
+                                 fb48hr=.SD[c_time==48]$cumfb,
+                                 fb54hr=.SD[c_time==54]$cumfb,
+                                 fb60hr=.SD[c_time==60]$cumfb,
+                                 fb66hr=.SD[c_time==66]$cumfb,
+                                 fb72hr=.SD[c_time==72]$cumfb), by = list(SUBJECT_ID, HADM_ID, ICUSTAY_ID)],by=NULL)
+write.table(final_wide, paste0(savedir,'/final_fb_wide_6hourly.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
+
 final_long <-all_merged[c_time %in% c(3,12,24,48,72)]
 #savedir <- ''
 write.table(final_long, paste0(savedir,'/final_fb_long.csv'), sep = ',', row.names = FALSE, col.names = TRUE)
